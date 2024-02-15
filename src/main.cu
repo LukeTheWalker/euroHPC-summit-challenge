@@ -3,7 +3,8 @@
 #include <cmath>
 #include <chrono>
 #include <conjugate_gradients_gpu.cu>
-#include <conjugate_gradients_cpu.hpp>
+#include <conjugate_gradients_cpu_serial.hpp>
+#include <conjugate_gradients_cpu_openmp.hpp>
 #include <utils.hpp>
 
 
@@ -86,8 +87,10 @@ int main(int argc, char ** argv)
     double * sol = new double[size];
     double gpu_time = 0.0;
     double cpu_time = 0.0;
+    double cpu_omp_time = 0.0;
 
     // GPU
+    #if USE_CUDA
     {
         printf("Solving the system on gpu ...\n");
 
@@ -98,20 +101,41 @@ int main(int argc, char ** argv)
         printf("Done in %f milliseconds\n", gpu_time / 1000.0);
         printf("\n");
     }
+    #endif
 
-    // CPU 
+    // CPU OMP
+    #if USE_OMP
+    {
+        printf("Solving the system on cpu with openmp ...\n");
+
+        double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        conjugate_gradients_cpu_openmp(matrix, rhs, sol, size, max_iters, rel_error);
+        double end_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        cpu_omp_time = (end_time - start_time);
+        printf("Done in %f milliseconds\n", cpu_omp_time / 1000.0);
+        printf("\n");
+    }
+    #endif
+
+    // CPU Serial
     {
         printf("Solving the system on cpu ...\n");
 
         double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        conjugate_gradients(matrix, rhs, sol, size, max_iters, rel_error);
+        conjugate_gradients_cpu_serial(matrix, rhs, sol, size, max_iters, rel_error);
         double end_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         cpu_time = (end_time - start_time);
         printf("Done in %f milliseconds\n", cpu_time / 1000.0);
         printf("\n");
     }
 
-    printf("Speedup: %f\n", cpu_time / gpu_time);
+
+
+    printf("GPU speedup: %f\n", cpu_time / gpu_time);
+    printf("\n");
+
+    printf("CPU OMP speedup: %f\n", cpu_time / cpu_omp_time);
+    printf("\n");
 
     printf("Writing solution to file ...\n");
     bool success_write_sol = write_matrix_to_file(output_file_sol, sol, size, 1);

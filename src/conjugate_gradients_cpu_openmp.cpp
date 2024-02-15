@@ -1,11 +1,13 @@
-#include <conjugate_gradients_cpu.hpp>
+#include <conjugate_gradients_cpu_openmp.hpp>
 
 #include <cmath>
 #include <cstdio>
+#include <omp.h>
 
-double dot(const double * x, const double * y, size_t size)
+double omp_dot(const double * x, const double * y, size_t size)
 {
     double result = 0.0;
+    #pragma omp parallel for reduction(+:result)
     for(size_t i = 0; i < size; i++)
     {
         result += x[i] * y[i];
@@ -13,12 +15,9 @@ double dot(const double * x, const double * y, size_t size)
     return result;
 }
 
-
-
-void axpby(double alpha, const double * x, double beta, double * y, size_t size)
+void omp_axpby(double alpha, const double * x, double beta, double * y, size_t size)
 {
-    // y = alpha * x + beta * y
-
+    #pragma omp parallel for
     for(size_t i = 0; i < size; i++)
     {
         y[i] = alpha * x[i] + beta * y[i];
@@ -27,10 +26,9 @@ void axpby(double alpha, const double * x, double beta, double * y, size_t size)
 
 
 
-void gemv(double alpha, const double * A, const double * x, double beta, double * y, size_t num_rows, size_t num_cols)
+void omp_gemv(double alpha, const double * A, const double * x, double beta, double * y, size_t num_rows, size_t num_cols)
 {
-    // y = alpha * A * x + beta * y;
-
+    #pragma omp parallel for
     for(size_t r = 0; r < num_rows; r++)
     {
         double y_val = 0.0;
@@ -44,7 +42,7 @@ void gemv(double alpha, const double * A, const double * x, double beta, double 
 
 
 
-void conjugate_gradients(const double * A, const double * b, double * x, size_t size, int max_iters, double rel_error)
+void conjugate_gradients_cpu_openmp(const double * A, const double * b, double * x, size_t size, int max_iters, double rel_error)
 {
     double alpha, beta, bb, rr, rr_new;
     double * r = new double[size];
@@ -59,19 +57,19 @@ void conjugate_gradients(const double * A, const double * b, double * x, size_t 
         p[i] = b[i];
     }
 
-    bb = dot(b, b, size);
+    bb = omp_dot(b, b, size);
     rr = bb;
     for(num_iters = 1; num_iters <= max_iters; num_iters++)
     {
-        gemv(1.0, A, p, 0.0, Ap, size, size);
-        alpha = rr / dot(p, Ap, size);
-        axpby(alpha, p, 1.0, x, size);
-        axpby(-alpha, Ap, 1.0, r, size);
-        rr_new = dot(r, r, size);
+        omp_gemv(1.0, A, p, 0.0, Ap, size, size);
+        alpha = rr / omp_dot(p, Ap, size);
+        omp_axpby(alpha, p, 1.0, x, size);
+        omp_axpby(-alpha, Ap, 1.0, r, size);
+        rr_new = omp_dot(r, r, size);
         beta = rr_new / rr;
         rr = rr_new;
         if(std::sqrt(rr / bb) < rel_error) { break; }
-        axpby(1.0, r, beta, p, size);
+        omp_axpby(1.0, r, beta, p, size);
     }
 
     delete[] r;

@@ -11,10 +11,10 @@ DATADIR = data
 SUBDIRS = $(ODIR) $(BINDIR) $(DATADIR) $(OUT_DIR) 
 
 USE_CUDA = 1
+USE_OMP = 1
 
 O_LEVEL = 3
 
-USE_OMP = 1
 
 # check if flag is active and nvcc is installed
 ifeq ($(USE_CUDA), 1)
@@ -22,7 +22,7 @@ ifeq ($(USE_CUDA), 1)
 		$(error "nvcc is not installed, please install it to use CUDA")
 	endif
 	CXX := nvcc
-	CUFLAGS := -arch=sm_80
+	CUFLAGS := -arch=sm_80 -DUSE_CUDA
 	CULDFLAGS := -lcuda
 else
 	CXX := g++
@@ -33,10 +33,11 @@ LDFLAGS = $(CULDFLAGS)
 
 ifeq ($(USE_OMP), 1)
 	ifeq ($(USE_CUDA), 1)
-		CXXFLAGS += -Xcompiler -fopenmp
+		CXXFLAGS += -Xcompiler -fopenmp -DUSE_OMP
 	else
-		CXXFLAGS += -fopenmp
+		CXXFLAGS += -fopenmp -DUSE_OMP
 	endif
+	LDFLAGS += -lgomp
 endif
 
 DEPS = $(IDIR)/$(wildcard *.hpp *.cuh) $(SCUDADIR)/$(wildcard *.cu)
