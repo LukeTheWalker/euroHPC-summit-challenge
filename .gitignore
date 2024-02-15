@@ -1,6 +1,7 @@
-build/
 .vscode/
 .idea/
 bin/
 data/
+obj/
+output/
 sol.txt
