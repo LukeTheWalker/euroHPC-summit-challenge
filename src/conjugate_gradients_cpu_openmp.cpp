@@ -4,20 +4,23 @@
 #include <cstdio>
 #include <omp.h>
 
-double omp_dot(const double * x, const double * y, size_t size)
-{
-    double result = 0.0;
-    #pragma omp parallel for reduction(+:result)
+double dot_result = 0.0;
+
+void omp_dot(const double * x, const double * y, size_t size)
+{   
+    #pragma omp single 
+    {dot_result = 0.0;}
+    #pragma omp barrier
+    #pragma omp for reduction(+:dot_result)
     for(size_t i = 0; i < size; i++)
     {
-        result += x[i] * y[i];
+        dot_result += x[i] * y[i];
     }
-    return result;
 }
 
 void omp_axpby(double alpha, const double * x, double beta, double * y, size_t size)
 {
-    #pragma omp parallel for
+    #pragma omp for
     for(size_t i = 0; i < size; i++)
     {
         y[i] = alpha * x[i] + beta * y[i];
@@ -28,7 +31,7 @@ void omp_axpby(double alpha, const double * x, double beta, double * y, size_t s
 
 void omp_gemv(double alpha, const double * A, const double * x, double beta, double * y, size_t num_rows, size_t num_cols)
 {
-    #pragma omp parallel for
+    #pragma omp for
     for(size_t r = 0; r < num_rows; r++)
     {
         double y_val = 0.0;
@@ -57,19 +60,36 @@ void conjugate_gradients_cpu_openmp(const double * A, const double * b, double *
         p[i] = b[i];
     }
 
-    bb = omp_dot(b, b, size);
-    rr = bb;
-    for(num_iters = 1; num_iters <= max_iters; num_iters++)
+    bool converged = false;
+
+    #pragma omp parallel
     {
-        omp_gemv(1.0, A, p, 0.0, Ap, size, size);
-        alpha = rr / omp_dot(p, Ap, size);
-        omp_axpby(alpha, p, 1.0, x, size);
-        omp_axpby(-alpha, Ap, 1.0, r, size);
-        rr_new = omp_dot(r, r, size);
-        beta = rr_new / rr;
-        rr = rr_new;
-        if(std::sqrt(rr / bb) < rel_error) { break; }
-        omp_axpby(1.0, r, beta, p, size);
+        omp_dot(b, b, size);
+        #pragma omp single
+        {
+            bb = dot_result;
+            rr = bb;
+        }
+        // for(num_iters = 1; num_iters <= max_iters && !converged; num_iters++)
+        while (num_iters <= max_iters && !converged)
+        {
+            omp_gemv(1.0, A, p, 0.0, Ap, size, size);
+            omp_dot(p, Ap, size);
+            #pragma omp single
+            {alpha = rr / dot_result;}
+            omp_axpby(alpha, p, 1.0, x, size);
+            omp_axpby(-alpha, Ap, 1.0, r, size);
+            omp_dot(r, r, size);
+            #pragma omp single
+            {
+                rr_new = dot_result;
+                beta = rr_new / rr;
+                rr = rr_new;
+                if(std::sqrt(rr / bb) < rel_error) { converged = true; }
+                num_iters++;
+            }
+            omp_axpby(1.0, r, beta, p, size);
+        }
     }
 
     delete[] r;

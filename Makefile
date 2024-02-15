@@ -22,20 +22,20 @@ ifeq ($(USE_CUDA), 1)
 		$(error "nvcc is not installed, please install it to use CUDA")
 	endif
 	CXX := nvcc
-	CUFLAGS := -arch=sm_80 -DUSE_CUDA
+	CUFLAGS := -arch=sm_80 -Xcompiler -Wall -Xcompiler -Wextra 
 	CULDFLAGS := -lcuda
 else
 	CXX := g++
 endif
 
-CXXFLAGS = -I$(IDIR) -I$(SCUDADIR) -std=c++17 -g -O$(O_LEVEL) $(CUFLAGS)
+CXXFLAGS = -I$(IDIR) -I$(SCUDADIR) -std=c++17 -g -O$(O_LEVEL) $(CUFLAGS) -DUSE_CUDA=$(USE_CUDA) -DUSE_OMP=$(USE_OMP) 
 LDFLAGS = $(CULDFLAGS)
 
 ifeq ($(USE_OMP), 1)
 	ifeq ($(USE_CUDA), 1)
-		CXXFLAGS += -Xcompiler -fopenmp -DUSE_OMP
+		CXXFLAGS += -Xcompiler -fopenmp
 	else
-		CXXFLAGS += -fopenmp -DUSE_OMP
+		CXXFLAGS += -fopenmp
 	endif
 	LDFLAGS += -lgomp
 endif
