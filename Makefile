@@ -22,7 +22,7 @@ ifeq ($(USE_CUDA), 1)
 		$(error "nvcc is not installed, please install it to use CUDA")
 	endif
 	CXX := nvcc
-	CUFLAGS := -arch=sm_86
+	CUFLAGS := -arch=sm_80
 	CULDFLAGS := -lcuda
 else
 	CXX := g++
