@@ -28,7 +28,8 @@ else
 	CXX := g++
 endif
 
-CXXFLAGS = -I$(IDIR) -I$(SCUDADIR) -std=c++17 -g -O$(O_LEVEL) $(CUFLAGS) -DUSE_CUDA=$(USE_CUDA) -DUSE_OMP=$(USE_OMP) 
+CXXFLAGS = -I$(IDIR) -I$(SCUDADIR) -std=c++17 -g -O$(O_LEVEL) $(CUFLAGS) 
+CPPFLAGS = -DUSE_CUDA=$(USE_CUDA) -DUSE_OMP=$(USE_OMP) 
 LDFLAGS = $(CULDFLAGS)
 
 ifeq ($(USE_OMP), 1)
@@ -40,14 +41,16 @@ ifeq ($(USE_OMP), 1)
 	LDFLAGS += -lgomp
 endif
 
-DEPS = $(IDIR)/$(wildcard *.hpp *.cuh) $(SCUDADIR)/$(wildcard *.cu)
+# DEPS = $(IDIR)/$(wildcard *.hpp *.cuh) $(SCUDADIR)/$(wildcard *.cu)
 
 _CXXFILES = $(wildcard $(SDIR)/*.cpp) $(wildcard $(SDIR)/*.cu)
-
 CXXFILES = $(notdir $(_CXXFILES))
- 
-_OBJ = $(CXXFILES:.cpp=.o)
-OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ:.cu=.o))
+
+_DEPS = $(filter %.d, $(CXXFILES:.cpp=.d) $(CXXFILES:.cu=.d))
+DEPS = $(patsubst %,$(ODIR)/%,$(_DEPS))
+
+_OBJ = $(filter %.o, $(CXXFILES:.cpp=.o) $(CXXFILES:.cu=.o))
+OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
 
 TARGET = $(BINDIR)/conj
 
@@ -61,11 +64,13 @@ run: $(TARGET)
 
 all: $(TARGET) run
 
-$(ODIR)/%.o: $(SDIR)/%.cpp $(DEPS) | $(ODIR)
-	$(CXX) -c -o $@ $< $(CXXFLAGS)
+$(ODIR)/%.o: $(SDIR)/%.cpp Makefile | $(ODIR)
+	$(CXX) -c -o $@ $< $(CXXFLAGS) $(CPPFLAGS) -MMD -MP
 
-$(ODIR)/%.o: $(SDIR)/%.cu $(DEPS) | $(ODIR)
-	$(CXX) -c -o $@ $< $(CXXFLAGS)
+$(ODIR)/%.o: $(SDIR)/%.cu Makefile | $(ODIR)
+	$(CXX) -c -o $@ $< $(CXXFLAGS) $(CPPFLAGS) -MMD -MP
+
+-include $(DEPS)
 
 .PHONY: clean run subdirs
 
