@@ -108,6 +108,75 @@ void gemv_kernel_launcher(double alpha, const double * A, const double * x, doub
     cudaError_t err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
 }
 
+__global__ void gemv_tiled_kernel (const double alpha, const double * a, const double * x, double * y, int m, int n){
+    extern __shared__ double work[];
+    int global_id_x = blockIdx.x * blockDim.x + threadIdx.x;
+    int global_id_y = blockIdx.y * blockDim.y + threadIdx.y;
+    int ncols = n / gridDim.x;
+    int col0 = ncols * global_id_x; // first value to load
+    if (global_id_x == gridDim.x - 1) ncols = n - col0; // last block
+    for (int k = 0; k < ncols; k += blockDim.y)
+    {
+        int col = k + threadIdx.y;
+        if (col < ncols && col0 + col < n) work[col] = x[col0 + col];
+    }
+    __syncthreads(); // sync group
+
+    if (global_id_y >= m) return;
+
+    double sum = 0;
+    for (int k = 0; k < ncols; k++)
+    {
+        sum += alpha * a[global_id_y + m * (col0 + k)] * work[k];
+    }
+    // if last block and ncols is not multiple of blockDim.y
+    // if (blockIdx.x == gridDim.x - 1 && n % gridDim.x != 0)
+    // {
+    //     for (int k = ncols; col0 + k < n; k++)
+    //     {
+    //         sum += alpha * a[global_id_y + m * (col0 + k)] * x[col0 + k];
+    //     }
+    // }
+    y[global_id_y + m * global_id_x] = sum;
+}
+
+__global__ void reduce_rows(double * y_partial, double * y, double beta, int m, int p)
+{
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    double sum = 0;
+    for (int col = 0; col < p; col++) sum += y_partial[row + m * col];
+    y[row] = sum + beta * y[row];
+}
+
+void gemv_tiled_kernel_launcher(double alpha, const double * A, const double * x, double beta, double * y, size_t num_rows, size_t num_cols)
+{
+   cudaError_t err;
+    int threadsPerRow = 128;
+    int rowsperblock = 64;
+    // Define the size of the grid and blocks
+    dim3 blockDim(1, rowsperblock);
+    dim3 gridDim(threadsPerRow, (num_rows + rowsperblock - 1) / rowsperblock);
+
+    // Calculate the size of the shared memory
+    size_t sharedMemSize = threadsPerRow * sizeof(double);
+
+    double * y_partial;
+
+    err = cudaMalloc((void**)&y_partial, num_rows * threadsPerRow * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
+    err = cudaMemset(y_partial, 0, num_rows * threadsPerRow * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
+
+    // Launch the kernel
+    gemv_tiled_kernel<<<gridDim, blockDim, sharedMemSize>>>(alpha, A, x, y_partial, num_rows, num_cols);
+    err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
+
+    // Reduce the rows
+    reduce_rows<<<(num_rows + threadsPerRow - 1) / threadsPerRow, threadsPerRow>>>(y_partial, y, beta, num_rows, threadsPerRow);
+    err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
+
+    err = cudaFree(y_partial); cuda_err_check(err, __FILE__, __LINE__);
+}
+
+
 void transfer_to_host(const double * d_x, double * h_x, size_t size)
 {
     cudaError_t err;
@@ -145,7 +214,7 @@ void par_conjugate_gradients(const double * h_A, const double * h_b, double * h_
     for(num_iters = 1; num_iters <= max_iters; num_iters++)
     {
         // gemv(1.0, A, p, 0.0, Ap, size, size);
-        gemv_kernel_launcher(1.0, d_A, d_p, 0.0, d_Ap, size, size);
+        gemv_tiled_kernel_launcher(1.0, d_A, d_p, 0.0, d_Ap, size, size);
         // alpha = rr / dot(p, Ap, size);
         alpha = rr / dot_kernel_launcher(d_p, d_Ap, size);
         // axpby(alpha, p, 1.0, x, size);
