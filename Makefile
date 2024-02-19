@@ -75,7 +75,7 @@ $(ODIR)/%.o: $(SDIR)/%.cu Makefile | $(ODIR)
 .PHONY: clean run subdirs
 
 clean:
-	rm -f $(ODIR)/*.o $(TARGET)
+	rm -f $(ODIR)/*.o  $(ODIR)/*.d $(TARGET)
 
 subdirs: | $(SUBDIRS)
 
