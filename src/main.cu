@@ -5,6 +5,7 @@
 #include <conjugate_gradients_gpu.cu>
 #include <conjugate_gradients_cpu_serial.hpp>
 #include <conjugate_gradients_cpu_openmp.hpp>
+#include <conjugate_gradients_gpu_tommy.cu>
 #include <utils.hpp>
 
 
@@ -88,11 +89,13 @@ int main(int argc, char ** argv)
     double gpu_time = 0.0;
     double cpu_time = 0.0;
     double cpu_omp_time = 0.0;
+    double tommy_gpu = 0.0;
 
     // GPU
     #if USE_CUDA
     {
         printf("Solving the system on gpu ...\n");
+        memset(sol, 0, size * sizeof(double));
 
         double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         par_conjugate_gradients(matrix, rhs, sol, size, max_iters, rel_error);
@@ -102,11 +105,26 @@ int main(int argc, char ** argv)
         printf("\n");
     }
     #endif
+    
+    #if USE_CUDA
+    {
+        printf("Solving the system on gpu with tommy implementation...\n");
+        memset(sol, 0, size * sizeof(double));
+
+        double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        tommy::conjugate_gradients(matrix, rhs, sol, size, max_iters, rel_error);
+        double end_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        tommy_gpu = (end_time - start_time);
+        printf("Done in %f milliseconds\n", tommy_gpu / 1000.0);
+        printf("\n");
+    }
+    #endif
 
     // CPU OMP
     #if USE_OMP
     {
         printf("Solving the system on cpu with openmp ...\n");
+        memset(sol, 0, size * sizeof(double));
 
         double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         conjugate_gradients_cpu_openmp(matrix, rhs, sol, size, max_iters, rel_error);
