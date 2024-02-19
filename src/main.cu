@@ -152,6 +152,9 @@ int main(int argc, char ** argv)
     printf("GPU speedup: %f\n", cpu_time / gpu_time);
     printf("\n");
 
+    printf("Tommy GPU speedup: %f\n", cpu_time / tommy_gpu);
+    printf("\n");
+
     printf("CPU OMP speedup: %f\n", cpu_time / cpu_omp_time);
     printf("\n");
 
