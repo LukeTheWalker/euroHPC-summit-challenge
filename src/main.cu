@@ -85,7 +85,7 @@ int main(int argc, char ** argv)
         size = matrix_rows;
     }
 
-    double * sol = new double[size];
+    double ** sol = new double*[4];
     double gpu_time = 0.0;
     double cpu_time = 0.0;
     double cpu_omp_time = 0.0;
@@ -95,10 +95,10 @@ int main(int argc, char ** argv)
     #if USE_CUDA
     {
         printf("Solving the system on gpu ...\n");
-        memset(sol, 0, size * sizeof(double));
+        sol[0] = new double[size];
 
         double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        par_conjugate_gradients(matrix, rhs, sol, size, max_iters, rel_error);
+        par_conjugate_gradients(matrix, rhs, sol[0], size, max_iters, rel_error);
         double end_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         gpu_time = (end_time - start_time);
         printf("Done in %f milliseconds\n", gpu_time / 1000.0);
@@ -109,10 +109,10 @@ int main(int argc, char ** argv)
     #if USE_CUDA
     {
         printf("Solving the system on gpu with tommy implementation...\n");
-        memset(sol, 0, size * sizeof(double));
+        sol[1] = new double[size];
 
         double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        tommy::conjugate_gradients(matrix, rhs, sol, size, max_iters, rel_error);
+        tommy::conjugate_gradients(matrix, rhs, sol[1], size, max_iters, rel_error);
         double end_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         tommy_gpu = (end_time - start_time);
         printf("Done in %f milliseconds\n", tommy_gpu / 1000.0);
@@ -124,10 +124,10 @@ int main(int argc, char ** argv)
     #if USE_OMP
     {
         printf("Solving the system on cpu with openmp ...\n");
-        memset(sol, 0, size * sizeof(double));
+        sol[2] = new double[size];
 
         double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        conjugate_gradients_cpu_openmp(matrix, rhs, sol, size, max_iters, rel_error);
+        conjugate_gradients_cpu_openmp(matrix, rhs, sol[2], size, max_iters, rel_error);
         double end_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         cpu_omp_time = (end_time - start_time);
         printf("Done in %f milliseconds\n", cpu_omp_time / 1000.0);
@@ -138,16 +138,15 @@ int main(int argc, char ** argv)
     // CPU Serial
     {
         printf("Solving the system on cpu ...\n");
+        sol[3] = new double[size];
 
         double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        conjugate_gradients_cpu_serial(matrix, rhs, sol, size, max_iters, rel_error);
+        conjugate_gradients_cpu_serial(matrix, rhs, sol[3], size, max_iters, rel_error);
         double end_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         cpu_time = (end_time - start_time);
         printf("Done in %f milliseconds\n", cpu_time / 1000.0);
         printf("\n");
     }
-
-
 
     printf("GPU speedup: %f\n", cpu_time / gpu_time);
     printf("\n");
@@ -159,7 +158,7 @@ int main(int argc, char ** argv)
     printf("\n");
 
     printf("Writing solution to file ...\n");
-    bool success_write_sol = write_matrix_to_file(output_file_sol, sol, size, 1);
+    bool success_write_sol = write_matrix_to_file(output_file_sol, sol[0], size, 1);
     if(!success_write_sol)
     {
         fprintf(stderr, "Failed to save solution\n");
@@ -167,6 +166,36 @@ int main(int argc, char ** argv)
     }
     printf("Done\n");
     printf("\n");
+
+    // check if all solutions are the same as the serial one, otherwise print the first 10 elements of each solution and the error
+    bool all_same = true;
+    for(size_t i = 0; i < 4; i++)
+    {
+        for(size_t j = 0; j < size; j++)
+        {
+            if(fabs(sol[3][j] - sol[i][j]) > 1e-6)
+            {
+                printf("Solution %ld is different from the serial one\n", i);
+                printf("First 10 elements of the serial solution:\n");
+                for(int k = 0; k < 10; k++)
+                {
+                    printf("%f\n", sol[3][k]);
+                }
+                printf("\n");
+                printf("First 10 elements of the solution %ld:\n", i);
+                for(int k = 0; k < 10; k++)
+                {
+                    printf("%f\n", sol[i][k]);
+                }
+                printf("\n");
+                printf("Error: %e\n", fabs(sol[3][j] - sol[i][j]));
+                printf("\n");
+                break;
+            }
+        }
+        if(!all_same) break;
+    }
+   
 
     delete[] matrix;
     delete[] rhs;

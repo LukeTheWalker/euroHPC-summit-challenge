@@ -177,9 +177,6 @@ __global__ void sumArray(const double* array, int size, double* result) {
 }
 
 
-
-
-
 template<int gridSize, int blockSize>
 __global__ void dot_product_kernel(const double* x, const double* y, double* outArray, int size) {
     __shared__ double sArr[blockSize];
@@ -392,6 +389,9 @@ void conjugate_gradients(const double * h_A, const double * h_b, double * h_x, s
     {
         printf("Did not converge in %d iterations, relative error is %e\n", max_iters, std::sqrt(err / bb_cpu));
     }
+
+    cudaMemcpy(h_x, x, size*sizeof(double), cudaMemcpyDeviceToHost);
+
     cudaFree(r_cuda);
     cudaFree(p_cuda);
     cudaFree(Ap_cuda);

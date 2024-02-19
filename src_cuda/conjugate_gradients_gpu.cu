@@ -108,13 +108,12 @@ void gemv_kernel_launcher(double alpha, const double * A, const double * x, doub
     cudaError_t err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
 }
 
-__global__ void gemv_tiled_kernel (const double alpha, const double * a, const double * x, double * y, int m, int n){
+__global__ void gemv_tiled_kernel (const double * a, const double * x, double * y, int m, int n){
     extern __shared__ double work[];
     int global_id_x = blockIdx.x * blockDim.x + threadIdx.x;
     int global_id_y = blockIdx.y * blockDim.y + threadIdx.y;
     int ncols = n / gridDim.x;
     int col0 = ncols * global_id_x; // first value to load
-    if (global_id_x == gridDim.x - 1) ncols = n - col0; // last block
     for (int k = 0; k < ncols; k += blockDim.y)
     {
         int col = k + threadIdx.y;
@@ -127,32 +126,36 @@ __global__ void gemv_tiled_kernel (const double alpha, const double * a, const d
     double sum = 0;
     for (int k = 0; k < ncols; k++)
     {
-        sum += alpha * a[global_id_y + m * (col0 + k)] * work[k];
+        sum += a[global_id_y + m * (col0 + k)] * work[k];
     }
     // if last block and ncols is not multiple of blockDim.y
-    // if (blockIdx.x == gridDim.x - 1 && n % gridDim.x != 0)
-    // {
-    //     for (int k = ncols; col0 + k < n; k++)
-    //     {
-    //         sum += alpha * a[global_id_y + m * (col0 + k)] * x[col0 + k];
-    //     }
-    // }
+    if (blockIdx.x == gridDim.x - 1 && n % gridDim.x != 0)
+    {
+        for (int k = ncols; col0 + k < n; k++)
+        {
+            sum += a[global_id_y + m * (col0 + k)] * x[col0 + k];
+        }
+    }
     y[global_id_y + m * global_id_x] = sum;
 }
 
-__global__ void reduce_rows(double * y_partial, double * y, double beta, int m, int p)
+__global__ void reduce_rows(double * y_partial, double * y, int m, int p)
 {
-    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    int global_id_x = blockIdx.x * blockDim.x + threadIdx.x;
+    if (global_id_x >= m) return;
     double sum = 0;
-    for (int col = 0; col < p; col++) sum += y_partial[row + m * col];
-    y[row] = sum + beta * y[row];
+    for (int k = 0; k < p; k++)
+    {
+        sum += y_partial[global_id_x + m * k];
+    }
+    y[global_id_x] = sum;
 }
 
-void gemv_tiled_kernel_launcher(double alpha, const double * A, const double * x, double beta, double * y, size_t num_rows, size_t num_cols)
+void gemv_tiled_kernel_launcher(const double * A, const double * x, double * y, size_t num_rows, size_t num_cols)
 {
-   cudaError_t err;
+    cudaError_t err;
     int threadsPerRow = 128;
-    int rowsperblock = 64;
+    int rowsperblock = 1024;
     // Define the size of the grid and blocks
     dim3 blockDim(1, rowsperblock);
     dim3 gridDim(threadsPerRow, (num_rows + rowsperblock - 1) / rowsperblock);
@@ -166,11 +169,13 @@ void gemv_tiled_kernel_launcher(double alpha, const double * A, const double * x
     err = cudaMemset(y_partial, 0, num_rows * threadsPerRow * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
 
     // Launch the kernel
-    gemv_tiled_kernel<<<gridDim, blockDim, sharedMemSize>>>(alpha, A, x, y_partial, num_rows, num_cols);
+    gemv_tiled_kernel<<<gridDim, blockDim, sharedMemSize>>>(A, x, y_partial, num_rows, num_cols);
+    err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
 
     // Reduce the rows
-    reduce_rows<<<(num_rows + threadsPerRow - 1) / threadsPerRow, threadsPerRow>>>(y_partial, y, beta, num_rows, threadsPerRow);
+    reduce_rows<<<(num_rows + threadsPerRow - 1) / threadsPerRow, threadsPerRow>>>(y_partial, y, num_rows, threadsPerRow);
+    err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
 
     err = cudaFree(y_partial); cuda_err_check(err, __FILE__, __LINE__);
@@ -182,11 +187,12 @@ void transfer_to_host(const double * d_x, double * h_x, size_t size)
     cudaError_t err;
 
     err = cudaMemcpy(h_x, d_x, size * sizeof(double), cudaMemcpyDeviceToHost); cuda_err_check(err, __FILE__, __LINE__);
+    err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
 }
 
 void par_conjugate_gradients(const double * h_A, const double * h_b, double * h_x, size_t size, int max_iters, double rel_error)
 {
-    double * d_A, * d_b;
+    const double * d_A, * d_b;
     int num_iters;
 
     double alpha, beta, bb, rr, rr_new;
@@ -202,8 +208,8 @@ void par_conjugate_gradients(const double * h_A, const double * h_b, double * h_
     err = cudaMalloc((void**)&d_Ap, size * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaMalloc((void**)&d_x, size * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
 
-    err = cudaMemcpy(d_A, h_A, size * size * sizeof(double), cudaMemcpyHostToDevice); cuda_err_check(err, __FILE__, __LINE__);
-    err = cudaMemcpy(d_b, h_b, size * sizeof(double), cudaMemcpyHostToDevice); cuda_err_check(err, __FILE__, __LINE__);
+    err = cudaMemcpy((void*)d_A, h_A, size * size * sizeof(double), cudaMemcpyHostToDevice); cuda_err_check(err, __FILE__, __LINE__);
+    err = cudaMemcpy((void*)d_b, h_b, size * sizeof(double), cudaMemcpyHostToDevice); cuda_err_check(err, __FILE__, __LINE__);
 
     err = cudaMemset(d_x, 0, size * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaMemcpy(d_r, d_b, size * sizeof(double), cudaMemcpyDeviceToDevice); cuda_err_check(err, __FILE__, __LINE__);
@@ -214,7 +220,8 @@ void par_conjugate_gradients(const double * h_A, const double * h_b, double * h_
     for(num_iters = 1; num_iters <= max_iters; num_iters++)
     {
         // gemv(1.0, A, p, 0.0, Ap, size, size);
-        gemv_tiled_kernel_launcher(1.0, d_A, d_p, 0.0, d_Ap, size, size);
+        gemv_tiled_kernel_launcher(d_A, d_p, d_Ap, size, size);
+        // gemv_kernel_launcher(1.0, d_A, d_p, 0.0, d_Ap, size, size);
         // alpha = rr / dot(p, Ap, size);
         alpha = rr / dot_kernel_launcher(d_p, d_Ap, size);
         // axpby(alpha, p, 1.0, x, size);
@@ -232,8 +239,8 @@ void par_conjugate_gradients(const double * h_A, const double * h_b, double * h_
 
     transfer_to_host(d_x, h_x, size);
 
-    err = cudaFree(d_A); cuda_err_check(err, __FILE__, __LINE__);
-    err = cudaFree(d_b); cuda_err_check(err, __FILE__, __LINE__);
+    err = cudaFree((void*)d_A); cuda_err_check(err, __FILE__, __LINE__);
+    err = cudaFree((void*)d_b); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaFree(d_r); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaFree(d_p); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaFree(d_Ap); cuda_err_check(err, __FILE__, __LINE__);
