@@ -1,6 +1,10 @@
+#ifndef GPU_LUCA_HPP
+#define GPU_LUCA_HPP
+
 #include <cstdio>
 #include <cuda_runtime.h>
 
+namespace luca {
 void cuda_err_check (cudaError_t err, const char *file, int line)
 {
     if (err != cudaSuccess)
@@ -154,7 +158,7 @@ __global__ void reduce_rows(double * y_partial, double * y, int m, int p)
 void gemv_tiled_kernel_launcher(const double * A, const double * x, double * y, size_t num_rows, size_t num_cols)
 {
     cudaError_t err;
-    int threadsPerRow = 1;
+    int threadsPerRow = 10;
     int rowsperblock = 1024;
     // Define the size of the grid and blocks
     dim3 blockDim(1, rowsperblock);
@@ -255,6 +259,6 @@ void par_conjugate_gradients(const double * h_A, const double * h_b, double * h_
         printf("Did not converge in %d iterations, relative error is %e\n", max_iters, std::sqrt(rr / bb));
     }
 }
+}
 
-
-
+#endif

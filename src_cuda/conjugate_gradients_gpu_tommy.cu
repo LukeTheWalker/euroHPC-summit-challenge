@@ -1,7 +1,10 @@
+#ifndef GPU_TOMMY_HPP
+#define GPU_TOMMY_HPP
 
 #include <iostream>
 #include <cuda.h>
 #include <chrono>
+#include <conjugate_gradients_gpu.cu>
 #define GRID_SIZE 200
 #define BLOCK_SIZE 1024
 
@@ -15,68 +18,6 @@ void check_cuda(const std::string& msg) {
         std::cout << "cuda error: " << msg << std::endl;
         std::cout << "description: " << err << std::endl;
     }
-}
-
-double dot(const double * x, const double * y, size_t size)
-{
-    double result = 0.0;
-    for(size_t i = 0; i < size; i++)
-    {
-        result += x[i] * y[i];
-    }
-    return result;
-}
-
-
-
-void axpby(double alpha, const double * x, double beta, double * y, size_t size)
-{
-    // y = alpha * x + beta * y
-
-    for(size_t i = 0; i < size; i++)
-    {
-        y[i] = alpha * x[i] + beta * y[i];
-    }
-}
-
-
-
-void gemv(double alpha, const double * A, const double * x, double beta, double * y, size_t num_rows, size_t num_cols)
-{
-    // y = alpha * A * x + beta * y;
-
-    for(size_t r = 0; r < num_rows; r++)
-    {
-        double y_val = 0.0;
-        for(size_t c = 0; c < num_cols; c++)
-        {
-            y_val += alpha * A[r * num_cols + c] * x[c];
-        }
-        y[r] = beta * y[r] + y_val;
-    }
-}
-
-void generate_matrix(size_t n, double** matrix_out) {
-    auto* matrix = new double[n * n];
-    for(size_t i = 0; i < n * n; i++) {
-        matrix[i] = 0.0;
-    }
-    for(size_t i = 0; i < n; i++) {
-        matrix[i*n + i] = 2.0;
-        if(i != n-1) {
-            matrix[(i+1)*n + i] = -1;
-            matrix[i*n + (i+1)] = -1;
-        }
-    }
-    *matrix_out = matrix;
-}
-
-void generate_rhs(size_t n, double value, double** rhs_out) {
-    auto* rhs = new double[n];
-    for(size_t i = 0; i < n; i++) {
-        rhs[i] = value;
-    }
-    *rhs_out = rhs;
 }
 
 __device__ void warpReduce(volatile double* sdata, int tid) {
@@ -275,55 +216,6 @@ void xpby(const double * x, double * y, const double* beta, int size, cudaStream
     xpby_kernel<gridSize, blockSize><<<gridSize, blockSize, 0, stream>>>(x, y, beta, size);
 }
 
-
-
-void conjugate_gradients_serial(const double * A, const double * b, double * x, size_t size, int max_iters, double rel_error, long* execution_time)
-{
-    double alpha, beta, bb, rr, rr_new;
-    double * r = new double[size];
-    double * p = new double[size];
-    double * Ap = new double[size];
-    int num_iters;
-
-    for(size_t i = 0; i < size; i++)
-    {
-        x[i] = 0.0;
-        r[i] = b[i];
-        p[i] = b[i];
-    }
-
-    bb = dot(b, b, size);
-    rr = bb;
-    auto start = std::chrono::high_resolution_clock::now();
-    for(num_iters = 1; num_iters <= max_iters; num_iters++)
-    {
-        gemv(1.0, A, p, 0.0, Ap, size, size);
-        alpha = rr / dot(p, Ap, size);
-        axpby(alpha, p, 1.0, x, size);
-        axpby(-alpha, Ap, 1.0, r, size);
-        rr_new = dot(r, r, size);
-        beta = rr_new / rr;
-        rr = rr_new;
-        if(std::sqrt(rr / bb) < rel_error) { break; }
-        axpby(1.0, r, beta, p, size);
-    }
-    auto stop = std::chrono::high_resolution_clock::now();
-    *execution_time = std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count();
-
-    delete[] r;
-    delete[] p;
-    delete[] Ap;
-
-    if(num_iters <= max_iters)
-    {
-        printf("Converged in %d iterations, relative error is %e\n", num_iters, std::sqrt(rr / bb));
-    }
-    else
-    {
-        printf("Did not converge in %d iterations, relative error is %e\n", max_iters, std::sqrt(rr / bb));
-    }
-}
-
 void conjugate_gradients(const double * h_A, const double * h_b, double * h_x, size_t size, int max_iters, double rel_error) {
     double* r_cuda;
     double* p_cuda;
@@ -368,8 +260,9 @@ void conjugate_gradients(const double * h_A, const double * h_b, double * h_x, s
     cudaMemcpy(&bb_cpu, bb, sizeof(double), cudaMemcpyDeviceToHost);
     err = bb_cpu;
     cudaMemcpy(rr, bb, sizeof(double), cudaMemcpyDeviceToDevice);
-    for(niters = 1; niters < max_iters; niters++) {
-        matrix_vector_mult<GRID_SIZE, BLOCK_SIZE>(A, p_cuda, Ap_cuda, (int)size, stream1);
+    for(niters = 1; niters <= max_iters; niters++) {
+        // matrix_vector_mult<GRID_SIZE, BLOCK_SIZE>(A, p_cuda, Ap_cuda, (int)size, stream1);
+        luca::gemv_tiled_kernel_launcher(A, p_cuda, Ap_cuda, size, size);
         dot_product<GRID_SIZE, BLOCK_SIZE>(p_cuda, Ap_cuda, dot_product_out_array,(int)size, alpha, stream1);
         divide<<<1,1, 0, stream1>>>(rr,alpha, alpha);
         axpby<GRID_SIZE, BLOCK_SIZE>(alpha, p_cuda, x, (int)size, stream1);
@@ -507,3 +400,4 @@ void print_sol_cuda(double* sol) {
 
 }*/
 }
+#endif //GPU_TOMMY_HPP
