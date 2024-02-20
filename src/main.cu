@@ -85,7 +85,7 @@ int main(int argc, char ** argv)
         size = matrix_rows;
     }
 
-    double ** sol = new double*[4];
+    double sol [4][size];
     double gpu_time = 0.0;
     double cpu_time = 0.0;
     double cpu_omp_time = 0.0;
@@ -95,7 +95,6 @@ int main(int argc, char ** argv)
     #if USE_CUDA
     {
         printf("Solving the system on gpu ...\n");
-        sol[0] = new double[size];
 
         double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         par_conjugate_gradients(matrix, rhs, sol[0], size, max_iters, rel_error);
@@ -109,7 +108,6 @@ int main(int argc, char ** argv)
     #if USE_CUDA
     {
         printf("Solving the system on gpu with tommy implementation...\n");
-        sol[1] = new double[size];
 
         double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         tommy::conjugate_gradients(matrix, rhs, sol[1], size, max_iters, rel_error);
@@ -124,7 +122,6 @@ int main(int argc, char ** argv)
     #if USE_OMP
     {
         printf("Solving the system on cpu with openmp ...\n");
-        sol[2] = new double[size];
 
         double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         conjugate_gradients_cpu_openmp(matrix, rhs, sol[2], size, max_iters, rel_error);
@@ -138,7 +135,6 @@ int main(int argc, char ** argv)
     // CPU Serial
     {
         printf("Solving the system on cpu ...\n");
-        sol[3] = new double[size];
 
         double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         conjugate_gradients_cpu_serial(matrix, rhs, sol[3], size, max_iters, rel_error);
@@ -199,7 +195,7 @@ int main(int argc, char ** argv)
 
     delete[] matrix;
     delete[] rhs;
-    delete[] sol;
+    
 
     printf("Finished successfully\n");
 

@@ -154,14 +154,14 @@ __global__ void reduce_rows(double * y_partial, double * y, int m, int p)
 void gemv_tiled_kernel_launcher(const double * A, const double * x, double * y, size_t num_rows, size_t num_cols)
 {
     cudaError_t err;
-    int threadsPerRow = 128;
+    int threadsPerRow = 1;
     int rowsperblock = 1024;
     // Define the size of the grid and blocks
     dim3 blockDim(1, rowsperblock);
     dim3 gridDim(threadsPerRow, (num_rows + rowsperblock - 1) / rowsperblock);
 
     // Calculate the size of the shared memory
-    size_t sharedMemSize = threadsPerRow * sizeof(double);
+    size_t sharedMemSize = num_cols / threadsPerRow * sizeof(double);
 
     double * y_partial;
 
