@@ -3,13 +3,14 @@
 
 #include <iostream>
 #include <cuda.h>
+#include <cuda_runtime.h>
 #include <chrono>
-#include <conjugate_gradients_gpu.cu>
 #define GRID_SIZE 200
 #define BLOCK_SIZE 1024
 
 
 namespace tommy {
+
 void check_cuda(const std::string& msg) {
     cudaDeviceSynchronize();
     cudaError_t err;
@@ -20,45 +21,109 @@ void check_cuda(const std::string& msg) {
     }
 }
 
+double dot(const double * x, const double * y, size_t size)
+{
+    double result = 0.0;
+    for(size_t i = 0; i < size; i++)
+    {
+        result += x[i] * y[i];
+    }
+    return result;
+}
+
+
+
+void axpby(double alpha, const double * x, double beta, double * y, size_t size)
+{
+    // y = alpha * x + beta * y
+
+    for(size_t i = 0; i < size; i++)
+    {
+        y[i] = alpha * x[i] + beta * y[i];
+    }
+}
+
+
+
+void gemv(double alpha, const double * A, const double * x, double beta, double * y, size_t num_rows, size_t num_cols)
+{
+    // y = alpha * A * x + beta * y;
+
+    for(size_t r = 0; r < num_rows; r++)
+    {
+        double y_val = 0.0;
+        for(size_t c = 0; c < num_cols; c++)
+        {
+            y_val += alpha * A[r * num_cols + c] * x[c];
+        }
+        y[r] = beta * y[r] + y_val;
+    }
+}
+
+void generate_matrix(size_t n, double** matrix_out) {
+    auto* matrix = new double[n * n];
+    for(size_t i = 0; i < n * n; i++) {
+        matrix[i] = 0.0;
+    }
+    for(size_t i = 0; i < n; i++) {
+        matrix[i*n + i] = 2.0;
+        if(i != n-1) {
+            matrix[(i+1)*n + i] = -1;
+            matrix[i*n + (i+1)] = -1;
+        }
+    }
+    *matrix_out = matrix;
+}
+
+void generate_rhs(size_t n, double value, double** rhs_out) {
+    auto* rhs = new double[n];
+    for(size_t i = 0; i < n; i++) {
+        rhs[i] = value;
+    }
+    *rhs_out = rhs;
+}
+
+
+
+template<int blockSize>
 __device__ void warpReduce(volatile double* sdata, int tid) {
-    sdata[tid] += sdata[tid + 32];
-    sdata[tid] += sdata[tid + 16];
-    sdata[tid] += sdata[tid + 8];
-    sdata[tid] += sdata[tid + 4];
-    sdata[tid] += sdata[tid + 2];
-    sdata[tid] += sdata[tid + 1];
+    if (blockSize >= 64) sdata[tid] += sdata[tid + 32];
+    if (blockSize >= 32) sdata[tid] += sdata[tid + 16];
+    if (blockSize >= 16) sdata[tid] += sdata[tid + 8];
+    if (blockSize >= 8) sdata[tid] += sdata[tid + 4];
+    if (blockSize >= 4) sdata[tid] += sdata[tid + 2];
+    if (blockSize >= 2) sdata[tid] += sdata[tid + 1];
+}
+
+template<int blockSize>
+__device__ void reduce(double* sdata, int tid) {
+    if (blockSize >= 1024) {
+        if (tid < 512) { sdata[tid] += sdata[tid + 512]; } __syncthreads(); }
+    if (blockSize >= 512) {
+        if (tid < 256) { sdata[tid] += sdata[tid + 256]; } __syncthreads(); }
+    if (blockSize >= 256) {
+        if (tid < 128) { sdata[tid] += sdata[tid + 128]; } __syncthreads(); }
+    if (blockSize >= 128) {
+        if (tid < 64) { sdata[tid] += sdata[tid + 64]; } __syncthreads(); }
+    if (tid < 32) warpReduce<blockSize>(sdata, tid);
 }
 
 
 template<int blockSize>
-__device__ void row_column_mult(const double* A, unsigned int row, int size, const double* p, double* Ap) {
+__device__ void row_column_mult(const double* __restrict__ A, unsigned int row, int size, const double* __restrict__ p, double* __restrict__ Ap) {
     __shared__ double sArr[blockSize];
     __shared__ double partial;
-    int iter_n = 0;
     if(threadIdx.x == 0) {
         partial = 0.0;
     }
-
-    for(unsigned int i = threadIdx.x; iter_n < size; i+=2*blockSize) {
-        sArr[threadIdx.x] = ((i<size)?A[row*size + i]*p[i]:0.0) + ((i + blockSize<size)?A[row*size + i + blockSize]*p[i + blockSize]:0.0);
-        for (unsigned int stride = blockSize/2; stride > 32;
-             stride = stride>>1)
-        {
-
-            __syncthreads();
-            if (threadIdx.x < stride)
-                sArr[threadIdx.x] += sArr[threadIdx.x+stride];
-        }
+    int size_ = size + threadIdx.x;
+    for(unsigned int i = threadIdx.x; i < size + threadIdx.x; i+=2*blockSize) {
+        sArr[threadIdx.x] = ((i<size)?A[row*size + i]*p[i]:0.0) + ((i + blockSize<size)?A[row*size + i + blockSize]*(p[i + blockSize]):0.0);
         __syncthreads();
-        if(threadIdx.x < 32) {
-            warpReduce(sArr, threadIdx.x);
-        }
-        iter_n += 2*blockSize;
-        __syncthreads();
+        reduce<blockSize>(sArr, threadIdx.x);
         if(threadIdx.x == 0) {
             partial += sArr[0];
         }
-        __syncthreads();
     }
     if(threadIdx.x == 0) {
         Ap[row] = partial;
@@ -67,7 +132,7 @@ __device__ void row_column_mult(const double* A, unsigned int row, int size, con
 }
 
 template<int gridSize, int blockSize>
-__global__ void matrix_vector_kernel(const double* A, double* p, double* Ap, int size) {
+__global__ void matrix_vector_kernel(const double* __restrict__ A, double* __restrict__ p, double* __restrict__ Ap, int size) {
     for(unsigned int i = blockIdx.x; i < size; i+=gridSize) {
         row_column_mult<blockSize>(A,i,size,p,Ap);
     }
@@ -75,41 +140,26 @@ __global__ void matrix_vector_kernel(const double* A, double* p, double* Ap, int
 }
 
 template<int gridSize, int blockSize>
-void matrix_vector_mult(const double* A, double* p, double* Ap, int size, cudaStream_t stream) {
+void matrix_vector_mult(const double* __restrict__ A, double* __restrict__ p, double* __restrict__ Ap, int size, cudaStream_t stream) {
     matrix_vector_kernel<gridSize, blockSize><<<gridSize, blockSize, 0, stream>>>(A, p, Ap, size);
 }
 
 
 template<int blockSize>
-__global__ void sumArray(const double* array, int size, double* result) {
+__global__ void sumArray(const double* __restrict__ array, int size, double* __restrict__ result) {
     __shared__ double sArr[blockSize];
     __shared__ double partial;
-    int iter_n = 0;
     if(threadIdx.x == 0) {
         partial = 0;
     }
-    sArr[threadIdx.x] = 0.0;
-    for(unsigned int i = threadIdx.x; iter_n < size; i+=2*blockSize) {
+    int size_ = size + threadIdx.x;
+    for(unsigned int i = threadIdx.x; i < size + threadIdx.x; i+=2*blockSize) {
         sArr[threadIdx.x] = ((i<size)?array[i]:0.0) + ((i + blockSize < size)?array[i + blockSize]:0.0);
-        for (unsigned int stride = blockSize/2; stride > 32;
-             stride = stride>>1)
-        {
-
-            __syncthreads();
-            if (threadIdx.x < stride)
-                sArr[threadIdx.x] += sArr[threadIdx.x+stride];
-        }
         __syncthreads();
-        if(threadIdx.x < 32) {
-            warpReduce(sArr, threadIdx.x);
-        }
-
-        iter_n += 2*blockSize;
-        __syncthreads();
+        reduce<blockSize>(sArr, threadIdx.x);
         if(threadIdx.x == 0) {
             partial += sArr[0];
         }
-        __syncthreads();
 
     }
     if(threadIdx.x == 0) {
@@ -117,45 +167,31 @@ __global__ void sumArray(const double* array, int size, double* result) {
     }
 }
 
-
 template<int gridSize, int blockSize>
-__global__ void dot_product_kernel(const double* x, const double* y, double* outArray, int size) {
+__global__ void dot_product_kernel(const double* __restrict__ x, const double* __restrict__ y, double* __restrict__ outArray, int size) {
     __shared__ double sArr[blockSize];
     if(threadIdx.x == 0) {
         outArray[blockIdx.x] = 0.0;
     }
-    for(unsigned int i = blockIdx.x; blockSize*i < size; i+=gridSize) {
-        sArr[threadIdx.x] = ((i*2*blockSize + threadIdx.x<size)?x[i*2*blockSize + threadIdx.x]*y[i*2*blockSize + threadIdx.x]:0.0) + ((i*blockSize*2 + threadIdx.x + blockSize<size)?x[i*blockSize*2 + threadIdx.x + blockSize]*y[i*blockSize*2 + threadIdx.x + blockSize]:0.0);
-        //sArr[threadIdx.x] = (i*blockSize + threadIdx.x<size)?x[i*blockSize + threadIdx.x]*y[i*blockSize + threadIdx.x]:0.0;
-
-        for (unsigned int stride = blockSize/2; stride > 32;
-             stride = stride>>1)
-        {
-
-            __syncthreads();
-            if (threadIdx.x < stride)
-                sArr[threadIdx.x] += sArr[threadIdx.x+stride];
-        }
+    for(unsigned int i = blockIdx.x; 2*blockSize*i < size; i+=gridSize) {
+        int tmp = i*2*blockSize + threadIdx.x;
+        sArr[threadIdx.x] = ((tmp<size)?x[tmp]*y[tmp]:0.0) + ((tmp + blockSize<size)?x[tmp + blockSize]*y[tmp + blockSize]:0.0);
         __syncthreads();
-        if(threadIdx.x < 32) {
-            warpReduce(sArr, threadIdx.x);
-        }
-        __syncthreads();
+        reduce<blockSize>(sArr, threadIdx.x);
         if(threadIdx.x == 0) {
             outArray[blockIdx.x] += sArr[0];
         }
-        __syncthreads();
     }
 }
 
 template<int gridSize, int blockSize>
-void dot_product(const double* x, const double* y, double* outArray, int size, double* result, cudaStream_t stream) {
+void dot_product(const double* __restrict__ x, const double* __restrict__ y, double* __restrict__ outArray, int size, double* __restrict__ result, cudaStream_t stream) {
     dot_product_kernel<gridSize, blockSize><<<gridSize, blockSize, 0, stream>>>(x, y, outArray, size);
     sumArray<blockSize><<<1, blockSize>>>(outArray, gridSize, result);
 }
 
 template<int gridSize, int blockSize>
-__global__ void axpby_kernel(const double* alpha, const double* x, double* y, int size) {
+__global__ void axpby_kernel(const double* __restrict__ alpha, const double* __restrict__ x, double* __restrict__ y, int size) {
     int th_id = threadIdx.x + blockIdx.x * blockSize;
     if(th_id < size) {
         y[th_id] = (*alpha) * x[th_id] + y[th_id];
@@ -164,7 +200,7 @@ __global__ void axpby_kernel(const double* alpha, const double* x, double* y, in
 
 
 template<int gridSize, int blockSize>
-__global__ void _minus_axpby_kernel(const double* alpha, const double* x, double* y, int size) {
+__global__ void _minus_axpby_kernel(const double* __restrict__ alpha, const double* __restrict__ x, double* __restrict__ y, int size) {
     int th_id = threadIdx.x + blockIdx.x * blockSize;
     if(th_id < size) {
         y[th_id] = -(*alpha) * x[th_id] + y[th_id];
@@ -172,7 +208,7 @@ __global__ void _minus_axpby_kernel(const double* alpha, const double* x, double
 }
 
 template<int gridSize, int blockSize>
-__global__ void xpby_kernel( const double* x, double* y, const double* beta, int size) {
+__global__ void xpby_kernel( const double* __restrict__ x, double* __restrict__ y, const double* __restrict__ beta, int size) {
     int th_id = threadIdx.x + blockIdx.x * blockSize;
     if(th_id < size) {
         y[th_id] = (x[th_id] + (*beta) * y[th_id]);
@@ -181,7 +217,7 @@ __global__ void xpby_kernel( const double* x, double* y, const double* beta, int
 
 
 
-__global__ void divide(double* div1, double* div2, double* result) {
+__global__ void divide(const double* __restrict__ div1, const double* __restrict__ div2, double* result) {
     if(threadIdx.x == 0) {
         *result = *div1 / *div2;
     }
@@ -198,23 +234,24 @@ void matrix_vector(double* matrix, double* vector, double* sol, int size) {
 }
 
 template<int gridSize, int blockSize>
-void axpby(double* alpha, const double * x, double * y, int size, cudaStream_t stream)
+void axpby(double* __restrict__ alpha, const double * __restrict__ x, double * __restrict__ y, int size, cudaStream_t stream)
 {
     axpby_kernel<gridSize, blockSize><<<gridSize, blockSize, 0, stream>>>(alpha, x, y, size);
 }
 
 template<int gridSize, int blockSize>
-void _minus_axpby(double* alpha, const double * x, double * y, int size, cudaStream_t stream)
+void _minus_axpby(double* __restrict__ alpha, const double * __restrict__ x, double * __restrict__ y, int size, cudaStream_t stream)
 {
     _minus_axpby_kernel<gridSize, blockSize><<<gridSize, blockSize, 0, stream>>>(alpha, x, y, size);
 }
 
 
 template<int gridSize, int blockSize>
-void xpby(const double * x, double * y, const double* beta, int size, cudaStream_t stream)
+void xpby(const double * __restrict__ x, double * __restrict__ y, const double* __restrict__ beta, int size, cudaStream_t stream)
 {
     xpby_kernel<gridSize, blockSize><<<gridSize, blockSize, 0, stream>>>(x, y, beta, size);
 }
+
 
 template<char use_original = 1>
 void conjugate_gradients(const double * h_A, const double * h_b, double * h_x, size_t size, int max_iters, double rel_error) {
@@ -314,12 +351,79 @@ void print_sol_cuda(double* sol) {
     }
 }
 
+void conjugate_gradients(const double * A, const double * b, double * x, size_t size, int max_iters, double rel_error) {
+    double* r_cuda;
+    double* p_cuda;
+    double* Ap_cuda;
+    double *alpha;
+    double *beta;
+    double* bb;
+    double bb_cpu;
+    double* rr;
+    double* rr_new;
+    double* dot_product_out_array;
+    double err;
+    cudaMalloc(&r_cuda, size*sizeof(double));
+    cudaMalloc(&p_cuda, size*sizeof(double));
+    cudaMalloc(&Ap_cuda, size*sizeof(double));
+    cudaMalloc(&dot_product_out_array, sizeof(double)*GRID_SIZE);
+    cudaMalloc(&alpha, sizeof(double));
+    cudaMalloc(&beta, sizeof(double));
+    cudaMalloc(&bb, sizeof(double));
+    cudaMalloc(&rr, sizeof(double));
+    cudaMalloc(&rr_new, sizeof(double));
+    cudaMemcpy(r_cuda, b, size*sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(p_cuda, b, size*sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemset(x,0,sizeof(double) * size);
+    int niters;
+    cudaStream_t stream1;
+    cudaStream_t stream2;
+    cudaStreamCreate(&stream1);
+    cudaStreamCreate(&stream2);
+    dot_product<GRID_SIZE, BLOCK_SIZE>(b, b, dot_product_out_array, (int) size, bb, stream1);
+    cudaMemcpy(&bb_cpu, bb, sizeof(double), cudaMemcpyDeviceToHost);
+    err = bb_cpu;
+    cudaMemcpy(rr, bb, sizeof(double), cudaMemcpyDeviceToDevice);
+    auto start = std::chrono::high_resolution_clock::now();
+    for(niters = 1; niters < max_iters; niters++) {
+        matrix_vector_mult<GRID_SIZE, BLOCK_SIZE>(A, p_cuda, Ap_cuda, (int)size, stream1);
+        dot_product<GRID_SIZE, BLOCK_SIZE>(p_cuda, Ap_cuda, dot_product_out_array,(int)size, alpha, stream1);
+        divide<<<1,1, 0, stream1>>>(rr,alpha, alpha);
+        axpby<GRID_SIZE, BLOCK_SIZE>(alpha, p_cuda, x, (int)size, stream1);
+        _minus_axpby<GRID_SIZE, BLOCK_SIZE>(alpha, Ap_cuda, r_cuda, (int) size, stream1);
+        dot_product<GRID_SIZE, BLOCK_SIZE>(r_cuda, r_cuda, dot_product_out_array, (int)size, rr_new, stream1);
+        divide<<<1, 1, 0, stream1>>>(rr_new, rr, beta);
+        cudaMemcpy(rr, rr_new, sizeof(double), cudaMemcpyDeviceToDevice);
+        cudaMemcpy(&err, rr, sizeof(double), cudaMemcpyDeviceToHost);
+        if(std::sqrt(err / bb_cpu) < rel_error) { break; }
+        xpby<GRID_SIZE, BLOCK_SIZE>(r_cuda, p_cuda, beta,  (int)size, stream1);
+    }
+    auto stop = std::chrono::high_resolution_clock::now();
+    if(niters < max_iters)
+    {
+        printf("Converged in %d iterations, relative error is %e\n", niters, std::sqrt(err / bb_cpu));
+    }
+    else
+    {
+        printf("Did not converge in %d iterations, relative error is %e\n", max_iters, std::sqrt(err / bb_cpu));
+    }
+    cudaFree(r_cuda);
+    cudaFree(p_cuda);
+    cudaFree(Ap_cuda);
+    cudaFree(dot_product_out_array);
+    cudaFree(alpha);
+    cudaFree(beta);
+    cudaFree(bb);
+    cudaFree(rr);
+    cudaFree(rr_new);
+}
 
 
-/*int main(int argc, char ** argv) {
+/*
+int main(int argc, char ** argv) {
 
-    int size = 500;
-    int max_iters = 1000;
+    int size = 2000;
+    int max_iters = 5000;
     double rel_error = 1e-9;
     int serial_trials = 1;
     int parallel_trials = 1;
