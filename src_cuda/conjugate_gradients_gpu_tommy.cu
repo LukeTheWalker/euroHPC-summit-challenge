@@ -116,7 +116,6 @@ __device__ void row_column_mult(const double* __restrict__ A, unsigned int row, 
     if(threadIdx.x == 0) {
         partial = 0.0;
     }
-    int size_ = size + threadIdx.x;
     for(unsigned int i = threadIdx.x; i < size + threadIdx.x; i+=2*blockSize) {
         sArr[threadIdx.x] = ((i<size)?A[row*size + i]*p[i]:0.0) + ((i + blockSize<size)?A[row*size + i + blockSize]*(p[i + blockSize]):0.0);
         __syncthreads();
@@ -152,7 +151,6 @@ __global__ void sumArray(const double* __restrict__ array, int size, double* __r
     if(threadIdx.x == 0) {
         partial = 0;
     }
-    int size_ = size + threadIdx.x;
     for(unsigned int i = threadIdx.x; i < size + threadIdx.x; i+=2*blockSize) {
         sArr[threadIdx.x] = ((i<size)?array[i]:0.0) + ((i + blockSize < size)?array[i + blockSize]:0.0);
         __syncthreads();
@@ -384,7 +382,6 @@ void conjugate_gradients(const double * A, const double * b, double * x, size_t 
     cudaMemcpy(&bb_cpu, bb, sizeof(double), cudaMemcpyDeviceToHost);
     err = bb_cpu;
     cudaMemcpy(rr, bb, sizeof(double), cudaMemcpyDeviceToDevice);
-    auto start = std::chrono::high_resolution_clock::now();
     for(niters = 1; niters < max_iters; niters++) {
         matrix_vector_mult<GRID_SIZE, BLOCK_SIZE>(A, p_cuda, Ap_cuda, (int)size, stream1);
         dot_product<GRID_SIZE, BLOCK_SIZE>(p_cuda, Ap_cuda, dot_product_out_array,(int)size, alpha, stream1);
@@ -398,7 +395,6 @@ void conjugate_gradients(const double * A, const double * b, double * x, size_t 
         if(std::sqrt(err / bb_cpu) < rel_error) { break; }
         xpby<GRID_SIZE, BLOCK_SIZE>(r_cuda, p_cuda, beta,  (int)size, stream1);
     }
-    auto stop = std::chrono::high_resolution_clock::now();
     if(niters < max_iters)
     {
         printf("Converged in %d iterations, relative error is %e\n", niters, std::sqrt(err / bb_cpu));
