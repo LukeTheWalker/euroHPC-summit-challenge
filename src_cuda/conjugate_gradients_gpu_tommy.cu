@@ -216,6 +216,7 @@ void xpby(const double * x, double * y, const double* beta, int size, cudaStream
     xpby_kernel<gridSize, blockSize><<<gridSize, blockSize, 0, stream>>>(x, y, beta, size);
 }
 
+template<char use_original = 1>
 void conjugate_gradients(const double * h_A, const double * h_b, double * h_x, size_t size, int max_iters, double rel_error) {
     double* r_cuda;
     double* p_cuda;
@@ -261,8 +262,11 @@ void conjugate_gradients(const double * h_A, const double * h_b, double * h_x, s
     err = bb_cpu;
     cudaMemcpy(rr, bb, sizeof(double), cudaMemcpyDeviceToDevice);
     for(niters = 1; niters <= max_iters; niters++) {
-        // matrix_vector_mult<GRID_SIZE, BLOCK_SIZE>(A, p_cuda, Ap_cuda, (int)size, stream1);
-        luca::gemv_tiled_kernel_launcher(A, p_cuda, Ap_cuda, size, size);
+        if constexpr (use_original) {
+            matrix_vector_mult<GRID_SIZE, BLOCK_SIZE>(A, p_cuda, Ap_cuda, (int)size, stream1);
+        } else {
+            luca::gemv_tiled_kernel_launcher(A, p_cuda, Ap_cuda, size, size);
+        }
         dot_product<GRID_SIZE, BLOCK_SIZE>(p_cuda, Ap_cuda, dot_product_out_array,(int)size, alpha, stream1);
         divide<<<1,1, 0, stream1>>>(rr,alpha, alpha);
         axpby<GRID_SIZE, BLOCK_SIZE>(alpha, p_cuda, x, (int)size, stream1);

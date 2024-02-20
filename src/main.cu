@@ -7,7 +7,8 @@
 #include <conjugate_gradients_cpu_openmp.hpp>
 #include <conjugate_gradients_gpu_tommy.cu>
 #include <utils.hpp>
-
+#include <functional>
+#include <string>
 
 int main(int argc, char ** argv)
 {
@@ -85,76 +86,34 @@ int main(int argc, char ** argv)
         size = matrix_rows;
     }
 
-    double sol [4][size];
-    double gpu_time = 0.0;
-    double cpu_time = 0.0;
-    double cpu_omp_time = 0.0;
-    double tommy_gpu = 0.0;
-
-    // GPU
-    #if USE_CUDA
-    {
-        printf("Solving the system on gpu ...\n");
-
-        double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        par_conjugate_gradients(matrix, rhs, sol[0], size, max_iters, rel_error);
-        double end_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        gpu_time = (end_time - start_time);
-        printf("Done in %f milliseconds\n", gpu_time / 1000.0);
-        printf("\n");
-    }
-    #endif
+    int number_of_tests = 4;
+    int times[number_of_tests];
+    double sol [number_of_tests][size];
+    std::function<void(double*, double*, double*, size_t, int, double)> implementations_to_test[number_of_tests] = 
+    {tommy::conjugate_gradients<true>, tommy::conjugate_gradients<false>, conjugate_gradients_cpu_openmp, conjugate_gradients_cpu_serial};
+    std::string names[number_of_tests] = {"Tommy with OG mvm", "Tommy with Luca's mvm", "CPU (OpenMP)", "CPU (Serial)"};
     
-    #if USE_CUDA
+    for (int i = 0; i < number_of_tests; i++)
     {
-        printf("Solving the system on gpu with tommy implementation...\n");
+        times[i] = 0;
 
+        printf("Solving the system with %s ...\n", names[i].c_str());
         double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        tommy::conjugate_gradients(matrix, rhs, sol[1], size, max_iters, rel_error);
+        implementations_to_test[i](matrix, rhs, sol[i], size, max_iters, rel_error);
         double end_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        tommy_gpu = (end_time - start_time);
-        printf("Done in %f milliseconds\n", tommy_gpu / 1000.0);
-        printf("\n");
-    }
-    #endif
-
-    // CPU OMP
-    #if USE_OMP
-    {
-        printf("Solving the system on cpu with openmp ...\n");
-
-        double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        conjugate_gradients_cpu_openmp(matrix, rhs, sol[2], size, max_iters, rel_error);
-        double end_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        cpu_omp_time = (end_time - start_time);
-        printf("Done in %f milliseconds\n", cpu_omp_time / 1000.0);
-        printf("\n");
-    }
-    #endif
-
-    // CPU Serial
-    {
-        printf("Solving the system on cpu ...\n");
-
-        double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        conjugate_gradients_cpu_serial(matrix, rhs, sol[3], size, max_iters, rel_error);
-        double end_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        cpu_time = (end_time - start_time);
-        printf("Done in %f milliseconds\n", cpu_time / 1000.0);
+        times[i] = (end_time - start_time);
+        printf("Done in %f milliseconds\n", times[i] / 1000.0);
         printf("\n");
     }
 
-    printf("GPU speedup: %f\n", cpu_time / gpu_time);
-    printf("\n");
-
-    printf("Tommy GPU speedup: %f\n", cpu_time / tommy_gpu);
-    printf("\n");
-
-    printf("CPU OMP speedup: %f\n", cpu_time / cpu_omp_time);
-    printf("\n");
+    // calculate speedup
+    for (int i = 0; i < number_of_tests - 1; i++)
+    {
+        printf("Speedup of function %s: %f\n", names[i].c_str(), (double)times[number_of_tests - 1] / times[i]);
+    }
 
     printf("Writing solution to file ...\n");
-    bool success_write_sol = write_matrix_to_file(output_file_sol, sol[0], size, 1);
+    bool success_write_sol = write_matrix_to_file(output_file_sol, sol[3], size, 1);
     if(!success_write_sol)
     {
         fprintf(stderr, "Failed to save solution\n");
