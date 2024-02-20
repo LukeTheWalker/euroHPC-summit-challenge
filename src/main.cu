@@ -36,8 +36,6 @@ int main(int argc, char ** argv)
     printf("  rel_error:         %e\n", rel_error);
     printf("\n");
 
-
-
     double * matrix;
     double * rhs;
     size_t size;
@@ -90,13 +88,14 @@ int main(int argc, char ** argv)
     int times[number_of_tests];
     double sol [number_of_tests][size];
     std::function<void(double*, double*, double*, size_t, int, double)> implementations_to_test[number_of_tests] = 
-    {tommy::conjugate_gradients<true>, tommy::conjugate_gradients<false>, conjugate_gradients_cpu_openmp, conjugate_gradients_cpu_serial};
-    std::string names[number_of_tests] = {"Tommy with OG mvm", "Tommy with Luca's mvm", "CPU (OpenMP)", "CPU (Serial)"};
+    {luca::par_conjugate_gradients, tommy::conjugate_gradients<true>, conjugate_gradients_cpu_openmp, conjugate_gradients_cpu_serial};
+    std::string names[number_of_tests] = {"Luca GPU", "Tommy GPU", "CPU (OpenMP)", "CPU (Serial)"};
+    int order[number_of_tests] = {0, 1, 2, 3};
     
-    for (int i = 0; i < number_of_tests; i++)
+    for (auto i : order)
     {
+        cudaDeviceReset();
         times[i] = 0;
-
         printf("Solving the system with %s ...\n", names[i].c_str());
         double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         implementations_to_test[i](matrix, rhs, sol[i], size, max_iters, rel_error);
