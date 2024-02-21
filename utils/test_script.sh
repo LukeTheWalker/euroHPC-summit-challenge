@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # List of implementations
-implementations=("Luca" "Tommy" "OpenMP" "CPU SeriaLl")
-orders=(0 1 2 3)
+implementations=("MGPU" "Luca" "Tommy" "OpenMP" "CPU Serial")
+orders=(0 1 2 3 4)
 
 # Compile function
 compile() {

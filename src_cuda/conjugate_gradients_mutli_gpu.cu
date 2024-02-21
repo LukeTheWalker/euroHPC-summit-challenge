@@ -46,7 +46,7 @@ __global__ void transpose_matrix (const double * A, double * At, size_t num_rows
 
 void gemv_mutli_gpu_tiled_kernel_launcher(const double ** local_A, const double * x, double * y, size_t * num_rows_per_device, size_t num_cols, cudaStream_t * s)
 {
-    int number_of_devices; cudaError_t err; ncclResult_t nccl_err;
+    int number_of_devices; cudaError_t err; /*ncclResult_t nccl_err;*/
 
     err = cudaGetDeviceCount(&number_of_devices); cuda_err_check(err, __FILE__, __LINE__);
 
@@ -120,7 +120,7 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
     err = cudaGetDeviceCount(&number_of_devices); cuda_err_check(err, __FILE__, __LINE__);
     s = (cudaStream_t*)malloc(number_of_devices * sizeof(cudaStream_t));
     d_local_A = (const double**)malloc(number_of_devices * sizeof(const double*));
-    d_local_A_transposed = (double**)malloc(number_of_devices * sizeof(double*));
+    d_local_A_transposed = (const double**)malloc(number_of_devices * sizeof(double*));
     number_of_rows_per_device = (size_t*)malloc(number_of_devices * sizeof(size_t));
 
     for(int i = 0; i < number_of_devices; i++)
