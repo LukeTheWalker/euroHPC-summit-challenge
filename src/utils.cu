@@ -1,4 +1,4 @@
-#include <utils.hpp>
+#include <utils.cuh>
 
 bool read_matrix_from_file(const char * filename, double ** matrix_out, size_t * num_rows_out, size_t * num_cols_out)
 {
@@ -63,5 +63,21 @@ void print_matrix(const double * matrix, size_t num_rows, size_t num_cols, FILE 
     }
 }
 
+void cuda_err_check (cudaError_t err, const char *file, int line)
+{
+    if (err != cudaSuccess)
+    {
+        fprintf (stderr, "CUDA error: %s (%s:%d)\n", cudaGetErrorString (err), file, line);
+        exit (EXIT_FAILURE);
+    }
+}
 
+void nccl_err_check (ncclResult_t err, const char *file, int line)
+ {
+     if (err != ncclSuccess)
+     {
+         fprintf (stderr, "NCCL error: %s (%s:%d)\n", ncclGetErrorString (err), file, line);
+         exit (EXIT_FAILURE);
+     }
+ }
 

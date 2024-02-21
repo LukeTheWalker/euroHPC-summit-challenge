@@ -12,7 +12,7 @@ SUBDIRS = $(ODIR) $(BINDIR) $(DATADIR) $(OUT_DIR)
 
 USE_CUDA = 1
 USE_OMP = 1
-
+USE_NCCL = 1
 O_LEVEL = 3
 
 
@@ -21,9 +21,12 @@ ifeq ($(USE_CUDA), 1)
 	ifeq (, $(shell which nvcc))
 		$(error "nvcc is not installed, please install it to use CUDA")
 	endif
+	ifeq ($(USE_NCCL), 1)
+ 		NCCLDFLAGS := -lnccl
+ 	endif
 	CXX := nvcc
 	CUFLAGS := -arch=sm_80 -Xcompiler -Wall -Xcompiler -Wextra 
-	CULDFLAGS := -lcuda
+	CULDFLAGS := -lcuda $(NCCLDFLAGS)
 else
 	CXX := g++
 endif

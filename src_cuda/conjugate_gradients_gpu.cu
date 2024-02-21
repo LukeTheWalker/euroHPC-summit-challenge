@@ -3,16 +3,9 @@
 
 #include <cstdio>
 #include <cuda_runtime.h>
+#include <utils.cuh>
 
 namespace luca {
-void cuda_err_check (cudaError_t err, const char *file, int line)
-{
-    if (err != cudaSuccess)
-    {
-        fprintf (stderr, "CUDA error: %s (%s:%d)\n", cudaGetErrorString (err), file, line);
-        exit (EXIT_FAILURE);
-    }
-}
 
 __global__ void dot_kernel(const double * x, const double * y, double * result, size_t size)
 {
