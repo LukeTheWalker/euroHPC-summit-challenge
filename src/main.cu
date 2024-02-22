@@ -95,6 +95,16 @@ int main(int argc, char ** argv)
     int impl_used = argc > 6 ? atoi(argv[6]) : 0;
 
     {
+        #if USE_CUDA == 1
+        int number_of_gpus; cudaError_t err;
+        err = cudaGetDeviceCount(&number_of_gpus); cuda_err_check(err, __FILE__, __LINE__);
+        for (int i = 0; i < number_of_gpus; i++)
+        {
+            err = cudaSetDevice(i); cuda_err_check(err, __FILE__, __LINE__);
+            err = cudaFree(0); cuda_err_check(err, __FILE__, __LINE__);
+        }
+        #endif
+        
         times[impl_used] = 0;
         printf("Solving the system with %s ...\n", names[impl_used].c_str());
         double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
