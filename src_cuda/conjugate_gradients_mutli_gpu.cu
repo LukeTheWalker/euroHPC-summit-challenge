@@ -68,7 +68,7 @@ void gemv_mutli_gpu_tiled_kernel_launcher(const double ** local_A, const double 
         reduce_rows<<<(num_rows_per_device[i] + threadsPerRow - 1) / threadsPerRow, threadsPerRow, 0, s[i]>>>(y_partial_local[i], y_local[i], num_rows_per_device[i], threadsPerRow);
     
         if (i > 0)
-            {err = cudaMemcpyPeerAsync(y + i * (num_rows_per_device[i]), 0, y_local[i], num_rows_per_device[i] * sizeof(double), cudaMemcpyDeviceToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);}
+            {err = cudaMemcpyPeerAsync(y + i * (num_rows_per_device[i]), 0, y_local[i], i, num_rows_per_device[i] * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);}
         else
             {err = cudaMemcpyAsync(y, y_local[i], num_rows_per_device[i] * sizeof(double), cudaMemcpyDeviceToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);}
     }
