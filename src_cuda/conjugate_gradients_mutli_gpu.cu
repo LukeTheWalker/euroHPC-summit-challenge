@@ -158,7 +158,7 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
     rr = bb;
     for(num_iters = 1; num_iters <= max_iters; num_iters++)
     {
-        err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
+        // err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
         // gemv(1.0, A, p, 0.0, Ap, size, size);
         gemv_mutli_gpu_tiled_kernel_launcher(d_local_A_transposed, d_p, d_Ap, number_of_rows_per_device, size, s);
         // gemv_kernel_launcher(1.0, d_A, d_p, 0.0, d_Ap, size, size);
