@@ -6,6 +6,7 @@
 #include <utils.cuh>
 #include <conjugate_gradients_gpu.cu>
 #include <nccl.h>
+#include <omp.h>
 
 #define nranks 4
 #define TILE_DIM 32
@@ -121,6 +122,9 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
     d_local_A_transposed = (const double**)malloc(number_of_devices * sizeof(double*));
     number_of_rows_per_device = (size_t*)malloc(number_of_devices * sizeof(size_t));
 
+    omp_set_num_threads(number_of_devices);
+
+    #pragma omp parallel for
     for(int i = 0; i < number_of_devices; i++)
     {   
         number_of_rows_per_device[i] = (i == number_of_devices - 1) ? size - i * (size / number_of_devices) : size / number_of_devices;
