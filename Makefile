@@ -26,7 +26,7 @@ ifeq ($(USE_CUDA), 1)
  	endif
 	CXX := nvcc
 	CUFLAGS := -arch=sm_80 -Xcompiler -Wall -Xcompiler -Wextra 
-	CULDFLAGS := -lcuda $(NCCLDFLAGS)
+	CULDFLAGS := -lcuda $(NCCLDFLAGS) -lcublas
 else
 	CXX := g++
 endif

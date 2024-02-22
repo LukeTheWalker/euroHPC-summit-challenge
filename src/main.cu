@@ -7,6 +7,7 @@
 #include <conjugate_gradients_cpu_openmp.hpp>
 #include <conjugate_gradients_gpu_tommy.cu>
 #include <conjugate_gradients_mutli_gpu.cu>
+#include <conjugate_gradients_cublas.cu>
 #include <utils.cuh>
 #include <functional>
 #include <string>
@@ -85,12 +86,12 @@ int main(int argc, char ** argv)
         size = matrix_rows;
     }
 
-    int number_of_tests = 5;
+    int number_of_tests = 6;
     int times[number_of_tests];
     double sol [number_of_tests][size];
     std::function<void(double*, double*, double*, size_t, int, double)> implementations_to_test[number_of_tests] = 
-    {luca::par_conjugate_gradients_multi_gpu, luca::par_conjugate_gradients, tommy::conjugate_gradients<true>, conjugate_gradients_cpu_openmp, conjugate_gradients_cpu_serial};
-    std::string names[number_of_tests] = {"MGPU", "Luca GPU", "Tommy GPU", "CPU (OpenMP)", "CPU (Serial)"};
+    {conjugate_gradients_cublas, luca::par_conjugate_gradients_multi_gpu, luca::par_conjugate_gradients, tommy::conjugate_gradients<true>, conjugate_gradients_cpu_openmp, conjugate_gradients_cpu_serial};
+    std::string names[number_of_tests] = {"cuBLAS", "MGPU", "Luca GPU", "Tommy GPU", "CPU (OpenMP)", "CPU (Serial)"};
 
     int impl_used = argc > 6 ? atoi(argv[6]) : 0;
 
