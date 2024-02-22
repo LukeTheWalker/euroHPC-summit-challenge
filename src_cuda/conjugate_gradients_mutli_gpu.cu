@@ -49,8 +49,6 @@ void gemv_mutli_gpu_tiled_kernel_launcher(const double ** local_A, const double 
     double ** y_local = (double**)malloc(number_of_devices * sizeof(double*));
     double ** x_local = (double**)malloc(number_of_devices * sizeof(double*));
 
-    omp_set_num_threads(number_of_devices);
-    #pragma omp parallel for
     for (int i = 0; i < number_of_devices; i++)
     {
         err = cudaSetDevice(i); cuda_err_check(err, __FILE__, __LINE__);
@@ -73,8 +71,6 @@ void gemv_mutli_gpu_tiled_kernel_launcher(const double ** local_A, const double 
         err = cudaMemcpyAsync(y + i * (num_rows_per_device[i]), y_local[i], num_rows_per_device[i] * sizeof(double), cudaMemcpyDeviceToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);
     }
 
-    omp_set_num_threads(number_of_devices);
-    #pragma omp parallel for
     for (int i = 0; i < number_of_devices; i++)
     {
         err = cudaSetDevice(i); cuda_err_check(err, __FILE__, __LINE__);
