@@ -31,7 +31,7 @@ else
 	CXX := g++
 endif
 
-CXXFLAGS = -I$(IDIR) -I$(SCUDADIR) -std=c++17 -g -O$(O_LEVEL) $(CUFLAGS) 
+CXXFLAGS = -I$(IDIR) -I$(SCUDADIR) -std=c++17 -g -G -O$(O_LEVEL) $(CUFLAGS) 
 CPPFLAGS = -DUSE_CUDA=$(USE_CUDA) -DUSE_OMP=$(USE_OMP) 
 LDFLAGS = $(CULDFLAGS)
 
