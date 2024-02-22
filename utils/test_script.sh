@@ -2,7 +2,7 @@
 
 # List of implementations
 implementations=("MGPU" "Luca" "Tommy" "OpenMP" "CPU Serial")
-orders=(0 1 2 3 4)
+orders=(0 1 2)
 
 # Compile function
 compile() {
