@@ -95,7 +95,6 @@ int main(int argc, char ** argv)
     int impl_used = argc > 6 ? atoi(argv[6]) : 0;
 
     {
-        cudaDeviceReset();
         times[impl_used] = 0;
         printf("Solving the system with %s ...\n", names[impl_used].c_str());
         double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -145,10 +144,9 @@ int main(int argc, char ** argv)
     //     if(!all_same) break;
     // }
    
-
-    delete[] matrix;
-    delete[] rhs;
-    
+    cudaError_t err;
+    err = cudaFreeHost(matrix); cuda_err_check(err, __FILE__, __LINE__);
+    err = cudaFreeHost(rhs); cuda_err_check(err, __FILE__, __LINE__);
 
     printf("Finished successfully\n\n");
 

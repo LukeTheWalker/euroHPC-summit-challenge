@@ -15,9 +15,9 @@ bool read_matrix_from_file(const char * filename, double ** matrix_out, size_t *
 
     fread(&num_rows, sizeof(size_t), 1, file);
     fread(&num_cols, sizeof(size_t), 1, file);
-    #if USE_CUDA == 0
-    cudaError_t err = cudaMallocHost((void**)&matrix, num_rows * num_cols * sizeof(double));
-    printf("Allocated %zu bytes\n", num_rows * num_cols * sizeof(double));
+    #if USE_CUDA == 1
+    cudaError_t err;
+    err = cudaHostAlloc((void**)&matrix, num_rows * num_cols * sizeof(double), cudaHostAllocWriteCombined);
     #else
     matrix = new double[num_rows * num_cols];
     #endif
