@@ -131,11 +131,7 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
         err = cudaMemcpyAsync((void*)(d_local_A[i]), h_A + i * (size / number_of_devices) * size, size * number_of_rows_per_device[i] * sizeof(double), cudaMemcpyHostToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);
         // err = cudaMemcpyAsync((void*)d_local_A_transposed[i], (void*)d_local_A[i], size * number_of_rows_per_device[i] * sizeof(double), cudaMemcpyDeviceToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);
         transpose<<<dim3(size / TILE_DIM + 1, size / TILE_DIM + 1), dim3(TILE_DIM, TILE_DIM), 0, s[i]>>>((double*)d_local_A_transposed[i], d_local_A[i], number_of_rows_per_device[i], size);
-        err = cudaFreeAsync((void*)d_local_A[i], s[i]); cuda_err_check(err, __FILE__, __LINE__);
     }
-
-    // sync all streams
-    for(int i = 0; i < number_of_devices; i++) err = cudaStreamSynchronize(s[i]); cuda_err_check(err, __FILE__, __LINE__);
     
     err = cudaSetDevice(0); cuda_err_check(err, __FILE__, __LINE__);
 
@@ -153,6 +149,9 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
     err = cudaMemset(d_x, 0, size * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaMemcpy(d_r, d_b, size * sizeof(double), cudaMemcpyDeviceToDevice); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaMemcpy(d_p, d_b, size * sizeof(double), cudaMemcpyDeviceToDevice); cuda_err_check(err, __FILE__, __LINE__);
+
+    // sync all streams
+    for(int i = 0; i < number_of_devices; i++) { err = cudaStreamSynchronize(s[i]); cuda_err_check(err, __FILE__, __LINE__); err = cudaFreeAsync((void*)d_local_A[i], s[i]); cuda_err_check(err, __FILE__, __LINE__);}
 
     bb = dot_kernel_launcher(d_b, d_b, size);
     rr = bb;
