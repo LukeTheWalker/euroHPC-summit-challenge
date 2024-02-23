@@ -37,11 +37,11 @@ LDFLAGS = $(CULDFLAGS)
 
 ifeq ($(USE_OMP), 1)
 	ifeq ($(USE_CUDA), 1)
-		CXXFLAGS += -Xcompiler -fopenmp
+		CXXFLAGS += -Xcompiler -fopenmp -Xcompiler -lmpi
 	else
 		CXXFLAGS += -fopenmp
 	endif
-	LDFLAGS += -lgomp
+	LDFLAGS += -lgomp -lmpi
 endif
 
 # DEPS = $(IDIR)/$(wildcard *.hpp *.cuh) $(SCUDADIR)/$(wildcard *.cu)
@@ -52,8 +52,14 @@ CXXFILES = $(notdir $(_CXXFILES))
 _DEPS = $(filter %.d, $(CXXFILES:.cpp=.d) $(CXXFILES:.cu=.d))
 DEPS = $(patsubst %,$(ODIR)/%,$(_DEPS))
 
-_OBJ = $(filter %.o, $(CXXFILES:.cpp=.o) $(CXXFILES:.cu=.o))
+_OBJ = $(filter-out main%, $(filter %.o, $(CXXFILES:.cpp=.o) $(CXXFILES:.cu=.o)))
 OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
+
+ifeq ($(USE_NCCL), 1)
+	OBJ += $(ODIR)/main_nccl.o
+else
+	OBJ += $(ODIR)/main.o
+endif
 
 TARGET = $(BINDIR)/conj
 

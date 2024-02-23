@@ -1,4 +1,5 @@
 #include <utils.cuh>
+#include <unistd.h>
 
 bool read_matrix_from_file(const char * filename, double ** matrix_out, size_t * num_rows_out, size_t * num_cols_out)
 {
@@ -85,4 +86,40 @@ void nccl_err_check (ncclResult_t err, const char *file, int line)
          exit (EXIT_FAILURE);
      }
  }
+
+void mpi_err_check (int err, const char *file, int line)
+{
+    if (err != MPI_SUCCESS)
+    {
+        char err_string[MPI_MAX_ERROR_STRING];
+        int err_string_len;
+        MPI_Error_string (err, err_string, &err_string_len);
+        fprintf (stderr, "MPI error: %s (%s:%d)\n", err_string, file, line);
+        exit (EXIT_FAILURE);
+    }
+}
+
+uint64_t getHostHash(const char *string)
+{
+    // Based on DJB2a, result = result * 33 ^ char
+    uint64_t result = 5381;
+    for (int c = 0; string[c] != '\0'; c++)
+    {
+        result = ((result << 5) + result) ^ string[c];
+    }
+    return result;
+}
+
+void getHostName(char *hostname, int maxlen)
+{
+    gethostname(hostname, maxlen);
+    for (int i = 0; i < maxlen; i++)
+    {
+        if (hostname[i] == '.')
+        {
+            hostname[i] = '\0';
+            return;
+        }
+    }
+}
 
