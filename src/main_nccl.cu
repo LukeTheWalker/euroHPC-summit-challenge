@@ -108,16 +108,23 @@ int main(int argc, char ** argv)
         }
         #endif
         
-        times[impl_used] = 0;
-        printf("Solving the system with %s ...\n", names[impl_used].c_str());
-        double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        implementations_to_test[impl_used](matrix, rhs, sol[impl_used], size, max_iters, rel_error);
-        double end_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        times[impl_used] = (end_time - start_time);
-        printf("Done in %f milliseconds\n", times[impl_used] / 1000.0);
-
         int rank;
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+        long start_time = 0, end_time = 0;
+
+        if (rank == 0){
+            times[impl_used] = 0;
+            printf("Solving the system with %s ...\n", names[impl_used].c_str());
+            start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        }
+        MPI_Barrier(MPI_COMM_WORLD);
+        implementations_to_test[impl_used](matrix, rhs, sol[impl_used], size, max_iters, rel_error);
+        if (rank == 0){
+            end_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+            times[impl_used] = (end_time - start_time);
+            printf("Done in %f milliseconds\n", times[impl_used] / 1000.0);
+        }
 
         MPI_Finalize();
         if (rank != 0) return 0;
