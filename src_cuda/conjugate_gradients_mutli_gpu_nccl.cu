@@ -92,7 +92,6 @@ void gemv_mutli_gpu_nccl_tiled_kernel_launcher(const double ** local_A, const do
 
 void par_conjugate_gradients_multi_gpu_nccl(const double * h_A, const double * h_b, double * h_x, size_t size, int max_iters, double rel_error)
 {
-    initialize_nccl();
     cudaError_t err;
 
     int number_of_devices;

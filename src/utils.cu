@@ -165,5 +165,5 @@ void initialize_nccl () {
         nccl_err = ncclCommInitRank(comms + i, nRanks * nDevices, id, myRank * nDevices + i); nccl_err_check(nccl_err, __FILE__, __LINE__);
     }
     nccl_err = ncclGroupEnd(); nccl_err_check(nccl_err, __FILE__, __LINE__);
-    if (myRank == 0) fprintf(stderr,"[MPI Rank %d] responsible for GPU %d-%d\n", myRank, myRank * nDevices, myRank * nDevices + nDevices - 1);
+    fprintf(stderr,"[MPI Rank %d] responsible for GPU %d-%d\n", myRank, myRank * nDevices, myRank * nDevices + nDevices - 1);
 }
