@@ -123,3 +123,47 @@ void getHostName(char *hostname, int maxlen)
     }
 }
 
+ncclUniqueId id;
+ncclComm_t * comms;
+int myRank, nRanks, localRank = 0;
+
+void initialize_nccl () {
+
+    int mpi_err; ncclResult_t nccl_err; cudaError_t cuda_err;
+
+    // get localRank
+    mpi_err = MPI_Comm_rank(MPI_COMM_WORLD, &myRank); mpi_err_check(mpi_err, __FILE__, __LINE__);
+    mpi_err = MPI_Comm_size(MPI_COMM_WORLD, &nRanks); mpi_err_check(mpi_err, __FILE__, __LINE__);
+
+    int nDevices;
+    cuda_err = cudaGetDeviceCount(&nDevices); cuda_err_check(cuda_err, __FILE__, __LINE__);
+
+    comms = (ncclComm_t *)malloc(nDevices * sizeof(ncclComm_t));
+
+    // calculating localRank which is used in selecting a GPU
+    uint64_t hostHashs[nRanks];
+    char hostname[1024];
+    getHostName(hostname, 1024);
+    hostHashs[myRank] = getHostHash(hostname);
+    mpi_err = MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, hostHashs, sizeof(uint64_t), MPI_BYTE, MPI_COMM_WORLD); mpi_err_check(mpi_err, __FILE__, __LINE__);
+    for (int p = 0; p < nRanks; p++)
+    {
+        if (p == myRank)
+            break;
+        if (hostHashs[p] == hostHashs[myRank])
+            localRank++;
+    }
+
+    if (myRank == 0)
+        ncclGetUniqueId(&id);
+    mpi_err = MPI_Bcast((void *)&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD); mpi_err_check(mpi_err, __FILE__, __LINE__);
+
+    nccl_err = ncclGroupStart(); nccl_err_check(nccl_err, __FILE__, __LINE__);
+    for (int i = 0; i < nDevices; i++)
+    {
+        cuda_err = cudaSetDevice(localRank * nDevices + i); cuda_err_check(cuda_err, __FILE__, __LINE__);
+        nccl_err = ncclCommInitRank(comms + i, nRanks * nDevices, id, myRank * nDevices + i); nccl_err_check(nccl_err, __FILE__, __LINE__);
+    }
+    nccl_err = ncclGroupEnd(); nccl_err_check(nccl_err, __FILE__, __LINE__);
+    fprintf(stderr,"[MPI Rank %d] responsible for GPU %d-%d\n", myRank, myRank * nDevices, myRank * nDevices + nDevices - 1);
+}

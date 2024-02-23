@@ -15,5 +15,6 @@ void nccl_err_check (ncclResult_t err, const char *file, int line);
 void mpi_err_check (int err, const char *file, int line);
 uint64_t getHostHash(const char *string);
 void getHostName(char *hostname, int maxlen);
+void initialize_nccl ();
 
 #endif // UTILS_HPP

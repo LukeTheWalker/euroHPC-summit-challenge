@@ -98,7 +98,6 @@ int main(int argc, char ** argv)
     int impl_used = argc > 6 ? atoi(argv[6]) : 0;
 
     {
-        #if USE_CUDA == 1
         int number_of_gpus; cudaError_t err;
         err = cudaGetDeviceCount(&number_of_gpus); cuda_err_check(err, __FILE__, __LINE__);
         for (int i = 0; i < number_of_gpus; i++)
@@ -106,8 +105,9 @@ int main(int argc, char ** argv)
             err = cudaSetDevice(i); cuda_err_check(err, __FILE__, __LINE__);
             err = cudaFree(0); cuda_err_check(err, __FILE__, __LINE__);
         }
-        #endif
-        
+
+        initialize_nccl();
+
         int rank;
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 

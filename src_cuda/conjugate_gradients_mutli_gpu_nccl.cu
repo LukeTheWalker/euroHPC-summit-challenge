@@ -11,50 +11,12 @@
 
 #define TILE_DIM 32
 #define BLOCK_ROWS 8
-#define NDEVICES_PER_NODE 4
+
+extern int myRank, nRanks;
+extern ncclComm_t * comms;
 
 
 namespace luca {
-
-ncclUniqueId id;
-ncclComm_t comms[NDEVICES_PER_NODE];
-int myRank, nRanks, localRank = 0;
-
-void initialize_nccl () {
-
-    int mpi_err; ncclResult_t nccl_err; cudaError_t cuda_err;
-
-    // get localRank
-    mpi_err = MPI_Comm_rank(MPI_COMM_WORLD, &myRank); mpi_err_check(mpi_err, __FILE__, __LINE__);
-    mpi_err = MPI_Comm_size(MPI_COMM_WORLD, &nRanks); mpi_err_check(mpi_err, __FILE__, __LINE__);
-
-    // calculating localRank which is used in selecting a GPU
-    uint64_t hostHashs[nRanks];
-    char hostname[1024];
-    getHostName(hostname, 1024);
-    hostHashs[myRank] = getHostHash(hostname);
-    mpi_err = MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, hostHashs, sizeof(uint64_t), MPI_BYTE, MPI_COMM_WORLD); mpi_err_check(mpi_err, __FILE__, __LINE__);
-    for (int p = 0; p < nRanks; p++)
-    {
-        if (p == myRank)
-            break;
-        if (hostHashs[p] == hostHashs[myRank])
-            localRank++;
-    }
-
-    if (myRank == 0)
-        ncclGetUniqueId(&id);
-    mpi_err = MPI_Bcast((void *)&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD); mpi_err_check(mpi_err, __FILE__, __LINE__);
-
-    nccl_err = ncclGroupStart(); nccl_err_check(nccl_err, __FILE__, __LINE__);
-    for (int i = 0; i < NDEVICES_PER_NODE; i++)
-    {
-        cuda_err = cudaSetDevice(localRank * NDEVICES_PER_NODE + i); cuda_err_check(cuda_err, __FILE__, __LINE__);
-        nccl_err = ncclCommInitRank(comms + i, nRanks * NDEVICES_PER_NODE, id, myRank * NDEVICES_PER_NODE + i); nccl_err_check(nccl_err, __FILE__, __LINE__);
-    }
-    nccl_err = ncclGroupEnd(); nccl_err_check(nccl_err, __FILE__, __LINE__);
-    fprintf(stderr,"[MPI Rank %d] responsible for GPU %d-%d\n", myRank, myRank * NDEVICES_PER_NODE, myRank * NDEVICES_PER_NODE + NDEVICES_PER_NODE - 1);
-}
 
 void gemv_mutli_gpu_nccl_tiled_kernel_launcher(const double ** local_A, const double * x, double * y, size_t * num_rows_per_device, size_t * num_rows_per_node, size_t num_cols, cudaStream_t * s)
 {
@@ -102,7 +64,7 @@ void gemv_mutli_gpu_nccl_tiled_kernel_launcher(const double ** local_A, const do
         for (int r = 0; r < nRanks; r++){
             for (int i = 0; i < number_of_devices; i++){
                 int num_to_transfer = (i == number_of_devices - 1) ? num_rows_per_node[r] - i * (num_rows_per_node[r] / number_of_devices) : num_rows_per_node[r] / number_of_devices;
-                nccl_err = ncclRecv(y + progressive_offset, num_to_transfer, ncclDouble, r * NDEVICES_PER_NODE + i, comms[0], s[0]); nccl_err_check(nccl_err, __FILE__, __LINE__);
+                nccl_err = ncclRecv(y + progressive_offset, num_to_transfer, ncclDouble, r * number_of_devices + i, comms[0], s[0]); nccl_err_check(nccl_err, __FILE__, __LINE__);
                 progressive_offset += num_to_transfer;
             }
         }
@@ -145,7 +107,8 @@ void par_conjugate_gradients_multi_gpu_nccl(const double * h_A, const double * h
     number_of_rows_per_device = (size_t*)malloc(number_of_devices * sizeof(size_t));
     number_of_rows_per_node = (size_t*)malloc(sizeof(size_t) * nRanks);
 
-    for (int i = 0; i < nRanks; i++) { number_of_rows_per_node[i] = (i == nRanks - 1) ? size - i * (size / nRanks) : size / nRanks; fprintf(stderr, "Rank %d, number of rows: %ld\n", i, number_of_rows_per_node[i]); }
+    for (int i = 0; i < nRanks; i++) number_of_rows_per_node[i] = (i == nRanks - 1) ? size - i * (size / nRanks) : size / nRanks;
+    if (myRank == 0) for (int i = 0; i < nRanks; i++) fprintf(stderr, "Rank %d, number of rows: %ld\n", i, number_of_rows_per_node[i]);
 
     omp_set_num_threads(number_of_devices);
 
@@ -243,6 +206,7 @@ void par_conjugate_gradients_multi_gpu_nccl(const double * h_A, const double * h
     free(d_local_A_transposed);
     free(number_of_rows_per_device);
     free(number_of_rows_per_node);
+    free(comms);
 
     if (myRank == 0){
         if(num_iters <= max_iters)
