@@ -88,12 +88,12 @@ int main(int argc, char ** argv)
         size = matrix_rows;
     }
 
-    int number_of_tests = 6;
+    int number_of_tests = 1;
     int times[number_of_tests];
     double sol [number_of_tests][size];
     std::function<void(double*, double*, double*, size_t, int, double)> implementations_to_test[number_of_tests] = 
-    {conjugate_gradients_cublas, luca::par_conjugate_gradients_multi_gpu, luca::par_conjugate_gradients, tommy::conjugate_gradients<true>, conjugate_gradients_cpu_openmp, conjugate_gradients_cpu_serial};
-    std::string names[number_of_tests] = {"cuBLAS", "MGPU", "Luca GPU", "Tommy GPU", "CPU (OpenMP)", "CPU (Serial)"};
+    {luca::par_conjugate_gradients_multi_gpu_nccl};
+    std::string names[number_of_tests] = {"NCCL"};
 
     int impl_used = argc > 6 ? atoi(argv[6]) : 0;
 
@@ -115,6 +115,12 @@ int main(int argc, char ** argv)
         double end_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         times[impl_used] = (end_time - start_time);
         printf("Done in %f milliseconds\n", times[impl_used] / 1000.0);
+
+        int rank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+        MPI_Finalize();
+        if (rank != 0) return 0;
     }
 
     

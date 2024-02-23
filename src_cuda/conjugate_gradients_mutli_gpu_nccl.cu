@@ -1,10 +1,11 @@
-#ifndef MULTI_GPU_LUCA_HPP
-#define MULTI_GPU_LUCA_HPP
+#ifndef MULTI_GPU_NCCL_LUCA_HPP
+#define MULTI_GPU_NCCL_LUCA_HPP
 
 #include <cstdio>
 #include <cuda_runtime.h>
 #include <utils.cuh>
 #include <conjugate_gradients_gpu.cu>
+#include <conjugate_gradients_mutli_gpu.cu>
 #include <nccl.h>
 #include <omp.h>
 
@@ -55,25 +56,7 @@ void initialize_nccl () {
     fprintf(stderr,"[MPI Rank %d] responsible for GPU %d-%d\n", myRank, myRank * NDEVICES_PER_NODE, myRank * NDEVICES_PER_NODE + NDEVICES_PER_NODE - 1);
 }
 
-__global__ void transpose(double *odata, const double *idata, int nrows, int ncols)
-{
-    __shared__ double block[TILE_DIM][TILE_DIM+1];
-    int x = blockIdx.x * TILE_DIM + threadIdx.x;
-    int y = blockIdx.y * TILE_DIM + threadIdx.y;
-    if((x < ncols) && (y < nrows))
-    {
-        block[threadIdx.y][threadIdx.x] = idata[y*ncols + x];
-    }
-    __syncthreads();
-    x = blockIdx.y * TILE_DIM + threadIdx.x;
-    y = blockIdx.x * TILE_DIM + threadIdx.y;
-    if((x < nrows) && (y < ncols))
-    {
-        odata[y*nrows + x] = block[threadIdx.x][threadIdx.y];
-    }       
-}
-
-void gemv_mutli_gpu_tiled_kernel_launcher(const double ** local_A, const double * x, double * y, size_t * num_rows_per_device, size_t num_cols, cudaStream_t * s)
+void gemv_mutli_gpu_nccl_tiled_kernel_launcher(const double ** local_A, const double * x, double * y, size_t * num_rows_per_device, size_t num_cols, cudaStream_t * s)
 {
     int number_of_devices; cudaError_t err; /*ncclResult_t nccl_err;*/
 
@@ -147,7 +130,7 @@ void gemv_mutli_gpu_tiled_kernel_launcher(const double ** local_A, const double 
 
 
 
-void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, double * h_x, size_t size, int max_iters, double rel_error)
+void par_conjugate_gradients_multi_gpu_nccl(const double * h_A, const double * h_b, double * h_x, size_t size, int max_iters, double rel_error)
 {
     initialize_nccl();
     cudaError_t err;
@@ -188,7 +171,7 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
     const double /* d_A,*/ * d_b;
     int num_iters;
 
-    double alpha, beta, bb, rr, rr_new;
+    double alpha = 0, beta = 0, rr = 0, rr_new = 0, bb = 0;
     double * d_r, * d_p, * d_Ap, * d_x;
 
     if (myRank == 0)
@@ -226,7 +209,7 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
         if (done) { break; }
         // err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
         // gemv(1.0, A, p, 0.0, Ap, size, size);
-        gemv_mutli_gpu_tiled_kernel_launcher(d_local_A_transposed, d_p, d_Ap, number_of_rows_per_device, size, s);
+        gemv_mutli_gpu_nccl_tiled_kernel_launcher(d_local_A_transposed, d_p, d_Ap, number_of_rows_per_device, size, s);
         // gemv_kernel_launcher(1.0, d_A, d_p, 0.0, d_Ap, size, size);
         // alpha = rr / dot(p, Ap, size);
         if (myRank == 0) {
@@ -245,7 +228,11 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
         }
     }
 
-    transfer_to_host(d_x, h_x, size);
+    if (myRank == 0)
+        transfer_to_host(d_x, h_x, size);
+
+    for (int i = 0; i < number_of_devices; i++)
+        nccl_err_check(ncclCommDestroy(comms[i]), __FILE__, __LINE__);
 
     // err = cudaFree((void*)d_A); cuda_err_check(err, __FILE__, __LINE__);
     for (int i = 0; i < number_of_devices; i++)
@@ -254,12 +241,14 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
         err = cudaFree((void*)d_local_A_transposed[i]); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaStreamDestroy(s[i]); cuda_err_check(err, __FILE__, __LINE__);
     }
-    err = cudaFree((void*)d_b); cuda_err_check(err, __FILE__, __LINE__);
-    err = cudaFree(d_r); cuda_err_check(err, __FILE__, __LINE__);
-    err = cudaFree(d_p); cuda_err_check(err, __FILE__, __LINE__);
-    err = cudaFree(d_Ap); cuda_err_check(err, __FILE__, __LINE__);
-    err = cudaFree(d_x); cuda_err_check(err, __FILE__, __LINE__);
 
+    if (myRank == 0){    
+        err = cudaFree((void*)d_b); cuda_err_check(err, __FILE__, __LINE__);
+        err = cudaFree(d_r); cuda_err_check(err, __FILE__, __LINE__);
+        err = cudaFree(d_p); cuda_err_check(err, __FILE__, __LINE__);
+        err = cudaFree(d_Ap); cuda_err_check(err, __FILE__, __LINE__);
+        err = cudaFree(d_x); cuda_err_check(err, __FILE__, __LINE__);
+    }
     free(s);
     free(d_local_A);
     free(d_local_A_transposed);
@@ -268,13 +257,15 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
     // for (int i=0; i<nranks; i++)
     //     ncclCommDestroy(comms[i]);
 
-    if(num_iters <= max_iters)
-    {
-        printf("Converged in %d iterations, relative error is %e\n", num_iters, std::sqrt(rr / bb));
-    }
-    else
-    {
-        printf("Did not converge in %d iterations, relative error is %e\n", max_iters, std::sqrt(rr / bb));
+    if (myRank == 0){
+        if(num_iters <= max_iters)
+        {
+            printf("Converged in %d iterations, relative error is %e\n", num_iters, std::sqrt(rr / bb));
+        }
+        else
+        {
+            printf("Did not converge in %d iterations, relative error is %e\n", max_iters, std::sqrt(rr / bb));
+        }
     }
 }
 }
