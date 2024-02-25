@@ -42,7 +42,7 @@ def run(version, matrix_file, vector_file, output_file, tolerance, max_iteration
     
     subprocess.run(run_command, check=True)
 
-def check_results(output_file, reference_file):
+def check_results(output_file, reference_file, implementation):
     # read the file written with:
     # fwrite(&num_rows, sizeof(size_t), 1, file);
     # fwrite(&num_cols, sizeof(size_t), 1, file);
@@ -65,7 +65,8 @@ def check_results(output_file, reference_file):
     for i in range(len(output_matrix)):
         if abs(output_matrix[i] - reference_matrix[i]) > 1e-6:
             is_correct = False
-            print(output_matrix[i], "vs",  reference_matrix[i])
+            if implementation != 'ROWS':
+                print(output_matrix[i], "vs",  reference_matrix[i])
     if is_correct:
         print('The output solution is correct')
     else:
@@ -103,10 +104,10 @@ if __name__ == '__main__':
         for implementation in implementations:
             compile(implementation)
             run(implementation, args.matrix_file, args.vector_file, args.output_file, args.tolerance, args.max_iterations)
-            check_results(args.output_file, args.reference_file)
+            check_results(args.output_file, args.reference_file, implementation)
             calculate_speedup("output/time.txt", reference_time)      
     else:
         compile(args.implementation)
         run(args.implementation, args.matrix_file, args.vector_file, args.output_file, args.tolerance, args.max_iterations)
-        check_results(args.output_file, args.reference_file)
+        check_results(args.output_file, args.reference_file, args.implementation)
         calculate_speedup("output/time.txt", reference_time)
