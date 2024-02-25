@@ -163,7 +163,6 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
     for (int i = 0; i < number_of_devices; i++)
     {
         err = cudaSetDevice(i); cuda_err_check(err, __FILE__, __LINE__);
-        err = cudaFreeAsync((void*)d_local_A[i], s[i]); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaFreeAsync((void*)d_local_A_transposed[i], s[i]); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaFreeAsync(y_partial_local[i], s[i]); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaFreeAsync(y_local[i], s[i]); cuda_err_check(err, __FILE__, __LINE__);
