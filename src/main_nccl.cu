@@ -138,37 +138,10 @@ int main(int argc, char ** argv)
         fprintf(stderr, "Failed to save solution\n");
         return 6;
     }
-    // printf("Done\n");
-    // printf("\n");
 
-    // check if all solutions are the same as the serial one, otherwise print the first 10 elements of each solution and the error
-    // bool all_same = true;
-    // for(size_t i = 0; i < 4; i++)
-    // {
-    //     for(size_t j = 0; j < size; j++)
-    //     {
-    //         if(fabs(sol[3][j] - sol[i][j]) > 1e-6)
-    //         {
-    //             printf("Solution %ld is different from the serial one\n", i);
-    //             printf("First 10 elements of the serial solution:\n");
-    //             for(int k = 0; k < 10; k++)
-    //             {
-    //                 printf("%f\n", sol[3][k]);
-    //             }
-    //             printf("\n");
-    //             printf("First 10 elements of the solution %ld:\n", i);
-    //             for(int k = 0; k < 10; k++)
-    //             {
-    //                 printf("%f\n", sol[i][k]);
-    //             }
-    //             printf("\n");
-    //             printf("Error: %e\n", fabs(sol[3][j] - sol[i][j]));
-    //             printf("\n");
-    //             break;
-    //         }
-    //     }
-    //     if(!all_same) break;
-    // }
+    FILE * time_f = fopen("output/time.txt", "w");
+    fprintf(time_f, "%d", time);
+    fclose(time_f);
    
     cudaError_t err;
     err = cudaFreeHost(matrix); cuda_err_check(err, __FILE__, __LINE__);
