@@ -251,7 +251,7 @@ void xpby(const double * __restrict__ x, double * __restrict__ y, const double* 
 }
 
 
-template<char use_original = 1>
+// template<char use_original = 1>
 void conjugate_gradients(const double * h_A, const double * h_b, double * h_x, size_t size, int max_iters, double rel_error) {
     double* r_cuda;
     double* p_cuda;
@@ -297,11 +297,11 @@ void conjugate_gradients(const double * h_A, const double * h_b, double * h_x, s
     err = bb_cpu;
     cudaMemcpy(rr, bb, sizeof(double), cudaMemcpyDeviceToDevice);
     for(niters = 1; niters <= max_iters; niters++) {
-        if constexpr (use_original) {
+        // if constexpr (use_original) {
             matrix_vector_mult<GRID_SIZE, BLOCK_SIZE>(A, p_cuda, Ap_cuda, (int)size, stream1);
-        } else {
-            luca::gemv_tiled_kernel_launcher(A, p_cuda, Ap_cuda, size, size);
-        }
+        // } else {
+        //     luca::gemv_tiled_kernel_launcher(A, p_cuda, Ap_cuda, size, size);
+        // }
         dot_product<GRID_SIZE, BLOCK_SIZE>(p_cuda, Ap_cuda, dot_product_out_array,(int)size, alpha, stream1);
         divide<<<1,1, 0, stream1>>>(rr,alpha, alpha);
         axpby<GRID_SIZE, BLOCK_SIZE>(alpha, p_cuda, x, (int)size, stream1);
@@ -334,174 +334,5 @@ void conjugate_gradients(const double * h_A, const double * h_b, double * h_x, s
     cudaFree(rr);
     cudaFree(rr_new);
 }
-
-void print_sol(double* sol) {
-    for(int i = 0; i < 5; i++) {
-        std::cout << sol[i] << std::endl;
-    }
-}
-
-void print_sol_cuda(double* sol) {
-    double* tmp = new double[5];
-    cudaMemcpy(tmp, sol, 5*sizeof(double), cudaMemcpyDeviceToHost);
-    for(int i = 0; i < 5; i++) {
-        std::cout << tmp[i] << std::endl;
-    }
-}
-
-void conjugate_gradients(const double * A, const double * b, double * x, size_t size, int max_iters, double rel_error) {
-    double* r_cuda;
-    double* p_cuda;
-    double* Ap_cuda;
-    double *alpha;
-    double *beta;
-    double* bb;
-    double bb_cpu;
-    double* rr;
-    double* rr_new;
-    double* dot_product_out_array;
-    double err;
-    cudaMalloc(&r_cuda, size*sizeof(double));
-    cudaMalloc(&p_cuda, size*sizeof(double));
-    cudaMalloc(&Ap_cuda, size*sizeof(double));
-    cudaMalloc(&dot_product_out_array, sizeof(double)*GRID_SIZE);
-    cudaMalloc(&alpha, sizeof(double));
-    cudaMalloc(&beta, sizeof(double));
-    cudaMalloc(&bb, sizeof(double));
-    cudaMalloc(&rr, sizeof(double));
-    cudaMalloc(&rr_new, sizeof(double));
-    cudaMemcpy(r_cuda, b, size*sizeof(double), cudaMemcpyHostToDevice);
-    cudaMemcpy(p_cuda, b, size*sizeof(double), cudaMemcpyHostToDevice);
-    cudaMemset(x,0,sizeof(double) * size);
-    int niters;
-    cudaStream_t stream1;
-    cudaStream_t stream2;
-    cudaStreamCreate(&stream1);
-    cudaStreamCreate(&stream2);
-    dot_product<GRID_SIZE, BLOCK_SIZE>(b, b, dot_product_out_array, (int) size, bb, stream1);
-    cudaMemcpy(&bb_cpu, bb, sizeof(double), cudaMemcpyDeviceToHost);
-    err = bb_cpu;
-    cudaMemcpy(rr, bb, sizeof(double), cudaMemcpyDeviceToDevice);
-    for(niters = 1; niters < max_iters; niters++) {
-        matrix_vector_mult<GRID_SIZE, BLOCK_SIZE>(A, p_cuda, Ap_cuda, (int)size, stream1);
-        dot_product<GRID_SIZE, BLOCK_SIZE>(p_cuda, Ap_cuda, dot_product_out_array,(int)size, alpha, stream1);
-        divide<<<1,1, 0, stream1>>>(rr,alpha, alpha);
-        axpby<GRID_SIZE, BLOCK_SIZE>(alpha, p_cuda, x, (int)size, stream1);
-        _minus_axpby<GRID_SIZE, BLOCK_SIZE>(alpha, Ap_cuda, r_cuda, (int) size, stream1);
-        dot_product<GRID_SIZE, BLOCK_SIZE>(r_cuda, r_cuda, dot_product_out_array, (int)size, rr_new, stream1);
-        divide<<<1, 1, 0, stream1>>>(rr_new, rr, beta);
-        cudaMemcpy(rr, rr_new, sizeof(double), cudaMemcpyDeviceToDevice);
-        cudaMemcpy(&err, rr, sizeof(double), cudaMemcpyDeviceToHost);
-        if(std::sqrt(err / bb_cpu) < rel_error) { break; }
-        xpby<GRID_SIZE, BLOCK_SIZE>(r_cuda, p_cuda, beta,  (int)size, stream1);
-    }
-    if(niters < max_iters)
-    {
-        printf("Converged in %d iterations, relative error is %e\n", niters, std::sqrt(err / bb_cpu));
-    }
-    else
-    {
-        printf("Did not converge in %d iterations, relative error is %e\n", max_iters, std::sqrt(err / bb_cpu));
-    }
-    cudaFree(r_cuda);
-    cudaFree(p_cuda);
-    cudaFree(Ap_cuda);
-    cudaFree(dot_product_out_array);
-    cudaFree(alpha);
-    cudaFree(beta);
-    cudaFree(bb);
-    cudaFree(rr);
-    cudaFree(rr_new);
-}
-
-
-/*
-int main(int argc, char ** argv) {
-
-    int size = 2000;
-    int max_iters = 5000;
-    double rel_error = 1e-9;
-    int serial_trials = 1;
-    int parallel_trials = 1;
-    if(argc > 1) size = atoi(argv[1]);
-    if(argc > 2) max_iters = atoi(argv[2]);
-    if(argc > 3) rel_error = atof(argv[3]);
-    if(argc > 4) serial_trials = atoi(argv[4]);
-    if(argc > 5) parallel_trials = atoi(argv[5]);
-
-    printf("Command line arguments:\n");
-    printf("  matrix_size: %d\n", size);
-    printf("  max_iters:         %d\n", max_iters);
-    printf("  rel_error:         %e\n", rel_error);
-    printf("  serial trials number:         %d\n", serial_trials);
-    printf("  parallel trials number:         %d\n", parallel_trials);
-    printf("\n");
-
-    long serial_execution_time = 0;
-    long parallel_execution_time = 0;
-
-    int* size_cuda;
-    int* max_iters_cuda;
-    double* tol_cuda;
-    double* matrix;
-    double* matrix_cuda;
-    double* rhs;
-    double* rhs_cuda;
-    double* r_cuda;
-    double* p_cuda;
-    double* Ap_cuda;
-    generate_matrix(size, &matrix);
-    generate_rhs(size, 2.0, &rhs);
-    auto* sol = new double[size];
-    double* sol_cuda;
-
-    for(int i = 0; i < size; i++) {
-        sol[i] = 1.0;
-    }
-
-    cudaMalloc(&matrix_cuda, size*size*sizeof(double));
-    cudaMalloc(&rhs_cuda, size*sizeof(double));
-    cudaMalloc(&sol_cuda, size*sizeof(double));
-    cudaMalloc(&max_iters_cuda, sizeof(int));
-    cudaMalloc(&size_cuda, sizeof(int));
-    cudaMalloc(&tol_cuda, sizeof(double));
-    cudaMalloc(&r_cuda, size*sizeof(double));
-    cudaMalloc(&p_cuda, size*sizeof(double));
-    cudaMalloc(&Ap_cuda, size*sizeof(double));
-    cudaMemcpy(matrix_cuda, matrix, size*size*sizeof(double), cudaMemcpyHostToDevice);
-    cudaMemcpy(rhs_cuda, rhs, size*sizeof(double), cudaMemcpyHostToDevice);
-    cudaMemcpy(sol_cuda, sol, size*sizeof(double), cudaMemcpyHostToDevice);
-    cudaMemcpy(max_iters_cuda, &max_iters, sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(size_cuda, &size, sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(tol_cuda, &rel_error, sizeof(double), cudaMemcpyHostToDevice);
-    cudaMemcpy(r_cuda, rhs, size*sizeof(double), cudaMemcpyHostToDevice);
-    cudaMemcpy(p_cuda, rhs, size*sizeof(double), cudaMemcpyHostToDevice);
-
-
-    for(int i = 0; i < serial_trials; i++) {
-        long tmp;
-        conjugate_gradients_serial(matrix, rhs, sol, size, max_iters, rel_error, &tmp);
-        serial_execution_time += tmp;
-
-    }
-    for(int i = 0; i < parallel_trials; i++) {
-        long tmp;
-        conjugate_gradients(matrix_cuda, rhs_cuda, sol_cuda, size, max_iters, rel_error, &tmp);
-        parallel_execution_time += tmp;
-    }
-
-
-    print_sol(sol);
-    print_sol_cuda(sol_cuda);
-
-    std::cout << "check" << std::endl;
-    check_cuda("error");
-    std::cout << "Serial average execution time: " << (double)serial_execution_time/serial_trials << std::endl;
-    std::cout << "Parallel average execution time: " << (double)parallel_execution_time/parallel_trials << std::endl;
-    std::cout << "Speedup: " << (double)((double)serial_execution_time/serial_trials)/((double)parallel_execution_time/parallel_trials) << std::endl;
-    printf("Finished successfully\n");
-
-
-}*/
 }
 #endif //GPU_TOMMY_HPP

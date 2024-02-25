@@ -91,7 +91,7 @@ int main(int argc, char ** argv)
         size = matrix_rows;
     }
 
-    int time;
+    int exec_time;
     double sol[size];
     std::function<void(double*, double*, double*, size_t, int, double)> implementations_to_test[255]; 
         
@@ -99,7 +99,7 @@ int main(int argc, char ** argv)
         implementations_to_test[0] = luca::par_conjugate_gradients_multi_gpu;
         implementations_to_test[1] = conjugate_gradients_cublas;
         implementations_to_test[2] = luca::par_conjugate_gradients;
-        implementations_to_test[3] = tommy::conjugate_gradients<true>; 
+        implementations_to_test[3] = tommy::conjugate_gradients; 
         #endif
         implementations_to_test[4] = conjugate_gradients_cpu_openmp; 
         implementations_to_test[5] = conjugate_gradients_cpu_serial;
@@ -119,13 +119,13 @@ int main(int argc, char ** argv)
         }
         #endif
         
-        time = 0;
+        exec_time = 0;
         printf("Solving the system with %s ...\n", names[impl_used].c_str());
         double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         implementations_to_test[impl_used](matrix, rhs, sol, size, max_iters, rel_error);
         double end_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        time = (end_time - start_time);
-        printf("Done in %f milliseconds\n", time / 1000.0);
+        exec_time = (end_time - start_time);
+        printf("Done in %f milliseconds\n", exec_time / 1000.0);
     }
 
     
@@ -138,7 +138,7 @@ int main(int argc, char ** argv)
     }
 
     FILE * time_f = fopen("output/time.txt", "w");
-    fprintf(time_f, "%d", time);
+    fprintf(time_f, "%d", exec_time);
     fclose(time_f);
 
     #if USE_CUDA == 1

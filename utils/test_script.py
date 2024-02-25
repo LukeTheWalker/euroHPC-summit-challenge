@@ -26,13 +26,13 @@ def compile(version):
     # make clean
     clean_command = ['make', 'clean']
     with open(os.devnull, 'w') as devnull:
-        subprocess.run(clean_command, check=True, stdout=devnull, stderr=devnull)
+        subprocess.run(clean_command, check=True, stdout=devnull)
 
     # make with flags
     make_command = ['make', '-j4'] + flags
     # print the command being run
     with open(os.devnull, 'w') as devnull:
-        subprocess.run(make_command, check=True, stdout=devnull, stderr=devnull)
+        subprocess.run(make_command, check=True, stdout=devnull)
 
 def run(version, matrix_file, vector_file, output_file, tolerance, max_iterations):
     # make run with arguments
@@ -84,7 +84,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Compile and run specific CG solver')
 
     # Add the version argument "cuBLAS", "MGPU", "Luca GPU", "Tommy GPU", "CPU (OpenMP)", "CPU (Serial)"
-    parser.add_argument('implementation', choices=['NCCL', 'MGPU', 'CUBLAS', 'TILED', 'ROWS', 'OPENMP', 'SERIAL', 'ALL'], help='The version of the program to run')
+    parser.add_argument('implementation', choices=['NCCL', 'MGPU', 'CUBLAS', 'TILED', 'ROWS', 'OPENMP', 'SERIAL', 'ALL', 'ALL_GPU'], help='The version of the program to run')
     parser.add_argument('matrix_file', help='The file containing the matrix to solve')
     parser.add_argument('vector_file', help='The file containing the vector to solve')
     parser.add_argument('output_file', help='The file to write the solution to')
@@ -95,13 +95,16 @@ if __name__ == '__main__':
     # Parse the command-line arguments
     args = parser.parse_args()
 
-    if args.implementation == 'ALL':
-        for version in implementation_numbers:
-            print(f"---- Running {version} ----")
-            compile(version)
-            run(version, args.matrix_file, args.vector_file, args.output_file, args.tolerance, args.max_iterations)
+    if 'ALL' in args.implementation:
+        if 'GPU' in args.implementation:
+            implementations = ['CUBLAS', 'TILED', 'ROWS', 'MGPU', 'NCCL']
+        else:
+            implementations = implementation_numbers.keys()
+        for implementation in implementations:
+            compile(implementation)
+            run(implementation, args.matrix_file, args.vector_file, args.output_file, args.tolerance, args.max_iterations)
             check_results(args.output_file, args.reference_file)
-            calculate_speedup("output/time.txt", reference_time)
+            calculate_speedup("output/time.txt", reference_time)      
     else:
         compile(args.implementation)
         run(args.implementation, args.matrix_file, args.vector_file, args.output_file, args.tolerance, args.max_iterations)

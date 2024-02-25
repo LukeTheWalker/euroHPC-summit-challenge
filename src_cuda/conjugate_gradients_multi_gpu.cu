@@ -12,9 +12,6 @@
 
 namespace luca {
 
-// ncclComm_t comms[nranks];
-// int devs[nranks] = { 0, 1, 2, 3 };
-
 
 __global__ void transpose(double *odata, const double *idata, int nrows, int ncols)
 {
@@ -34,7 +31,7 @@ __global__ void transpose(double *odata, const double *idata, int nrows, int nco
     }       
 }
 
-void gemv_multi_gpu_tiled_kernel_launcher(const double ** local_A, const double * x, double * y, size_t * num_rows_per_device, size_t num_cols, cudaStream_t * s)
+void gemv_multi_gpu_tiled_kernel_launcher(const double ** local_A, const double * x, double * y, double ** y_partial_local, double ** y_local, double ** x_local, size_t * num_rows_per_device, size_t num_cols, cudaStream_t * s)
 {
     int number_of_devices; cudaError_t err; /*ncclResult_t nccl_err;*/
 
@@ -42,10 +39,6 @@ void gemv_multi_gpu_tiled_kernel_launcher(const double ** local_A, const double 
 
     int threadsPerRow = 10;
     size_t sharedMemSize = num_cols / threadsPerRow * sizeof(double);
-
-    double ** y_partial_local = (double**)malloc(number_of_devices * sizeof(double*));
-    double ** y_local = (double**)malloc(number_of_devices * sizeof(double*));
-    double ** x_local = (double**)malloc(number_of_devices * sizeof(double*));
 
     for (int i = 0; i < number_of_devices; i++)
     {
@@ -56,9 +49,6 @@ void gemv_multi_gpu_tiled_kernel_launcher(const double ** local_A, const double 
         dim3 blockDim(1, rowsperblock);
         dim3 gridDim(threadsPerRow, (num_rows_per_device[i] + rowsperblock - 1) / rowsperblock);
 
-        err = cudaMallocAsync((void**)&y_partial_local[i], num_rows_per_device[i] * threadsPerRow * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
-        err = cudaMallocAsync((void**)&y_local[i], num_rows_per_device[i] * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
-        err = cudaMallocAsync((void**)&x_local[i], num_cols * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaMemsetAsync(y_partial_local[i], 0, num_rows_per_device[i] * threadsPerRow * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaMemcpyAsync(x_local[i], x, num_cols * sizeof(double), cudaMemcpyDeviceToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);
 
@@ -73,23 +63,9 @@ void gemv_multi_gpu_tiled_kernel_launcher(const double ** local_A, const double 
     {
         err = cudaSetDevice(i); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaStreamSynchronize(s[i]); cuda_err_check(err, __FILE__, __LINE__);
-        err = cudaFreeAsync(y_partial_local[i], s[i]); cuda_err_check(err, __FILE__, __LINE__);
-        err = cudaFreeAsync(y_local[i], s[i]); cuda_err_check(err, __FILE__, __LINE__);
     }
 
-    // for (int i = 0; i < number_of_devices; i++)
-    // {
-    //     err = cudaSetDevice(i); cuda_err_check(err, __FILE__, __LINE__);
-    // }
-
-    // sync all streams
-    // for(int i = 0; i < number_of_devices; i++) err = cudaStreamSynchronize(s[i]); cuda_err_check(err, __FILE__, __LINE__);
-
     err = cudaSetDevice(0); cuda_err_check(err, __FILE__, __LINE__);
-
-    free(y_partial_local);
-    free(y_local);
-    free(x_local);
 }
 
 
@@ -97,8 +73,6 @@ void gemv_multi_gpu_tiled_kernel_launcher(const double ** local_A, const double 
 void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, double * h_x, size_t size, int max_iters, double rel_error)
 {
     cudaError_t err;
-
-    // nccl_err = ncclCommInitAll(comms, nranks, devs); nccl_err_check(nccl_err, __FILE__, __LINE__);
 
     const double /* d_A,*/ * d_b;
     int num_iters;
@@ -117,6 +91,10 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
     d_local_A_transposed = (const double**)malloc(number_of_devices * sizeof(double*));
     number_of_rows_per_device = (size_t*)malloc(number_of_devices * sizeof(size_t));
 
+    double ** y_partial_local = (double**)malloc(number_of_devices * sizeof(double*));
+    double ** y_local = (double**)malloc(number_of_devices * sizeof(double*));
+    double ** x_local = (double**)malloc(number_of_devices * sizeof(double*));
+
     omp_set_num_threads(number_of_devices);
 
     #pragma omp parallel for
@@ -130,6 +108,10 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
         err = cudaMemcpyAsync((void*)(d_local_A[i]), h_A + i * (size / number_of_devices) * size, size * number_of_rows_per_device[i] * sizeof(double), cudaMemcpyHostToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);
         // err = cudaMemcpyAsync((void*)d_local_A_transposed[i], (void*)d_local_A[i], size * number_of_rows_per_device[i] * sizeof(double), cudaMemcpyDeviceToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);
         transpose<<<dim3(size / TILE_DIM + 1, size / TILE_DIM + 1), dim3(TILE_DIM, TILE_DIM), 0, s[i]>>>((double*)d_local_A_transposed[i], d_local_A[i], number_of_rows_per_device[i], size);
+
+        err = cudaMallocAsync((void**)&y_partial_local[i], number_of_rows_per_device[i] * threadsPerRow * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
+        err = cudaMallocAsync((void**)&y_local[i], number_of_rows_per_device[i] * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
+        err = cudaMallocAsync((void**)&x_local[i], size * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
     }
     
     err = cudaSetDevice(0); cuda_err_check(err, __FILE__, __LINE__);
@@ -158,7 +140,7 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
     {
         // err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
         // gemv(1.0, A, p, 0.0, Ap, size, size);
-        gemv_multi_gpu_tiled_kernel_launcher(d_local_A_transposed, d_p, d_Ap, number_of_rows_per_device, size, s);
+        gemv_multi_gpu_tiled_kernel_launcher(d_local_A_transposed, d_p, d_Ap, y_partial_local, y_local, x_local, number_of_rows_per_device, size, s);
         // gemv_kernel_launcher(1.0, d_A, d_p, 0.0, d_Ap, size, size);
         // alpha = rr / dot(p, Ap, size);
         alpha = rr / dot_kernel_launcher(d_p, d_Ap, size);
@@ -181,9 +163,13 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
     for (int i = 0; i < number_of_devices; i++)
     {
         err = cudaSetDevice(i); cuda_err_check(err, __FILE__, __LINE__);
-        err = cudaFree((void*)d_local_A_transposed[i]); cuda_err_check(err, __FILE__, __LINE__);
+        err = cudaFreeAsync((void*)d_local_A_transposed[i], s[i]); cuda_err_check(err, __FILE__, __LINE__);
+        err = cudaFreeAsync(y_partial_local[i], s[i]); cuda_err_check(err, __FILE__, __LINE__);
+        err = cudaFreeAsync(y_local[i], s[i]); cuda_err_check(err, __FILE__, __LINE__);
+        err = cudaFreeAsync(x_local[i], s[i]); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaStreamDestroy(s[i]); cuda_err_check(err, __FILE__, __LINE__);
     }
+
     err = cudaFree((void*)d_b); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaFree(d_r); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaFree(d_p); cuda_err_check(err, __FILE__, __LINE__);
@@ -195,8 +181,10 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
     free(d_local_A_transposed);
     free(number_of_rows_per_device);
 
-    // for (int i=0; i<nranks; i++)
-    //     ncclCommDestroy(comms[i]);
+
+    free(y_partial_local);
+    free(y_local);
+    free(x_local);
 
     if(num_iters <= max_iters)
     {

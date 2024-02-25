@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <utils.cuh>
 
+static constexpr int threadsPerRow = 10;
+static constexpr int rowsperblock = 1024;
 namespace luca {
 
 __global__ void dot_kernel(const double * x, const double * y, double * result, size_t size)
@@ -147,7 +149,7 @@ __global__ void reduce_rows(double * y_partial, double * y, int m, int p)
     y[global_id_x] = sum;
 }
 
-void gemv_tiled_kernel_launcher(const double * A, const double * x, double * y, size_t num_rows, size_t num_cols)
+void gemv_tiled_kernel_launcher(const double * A, const double * x, double * y, double * y_partial, size_t num_rows, size_t num_cols)
 {
     cudaError_t err;
     int threadsPerRow = 10;
@@ -159,9 +161,6 @@ void gemv_tiled_kernel_launcher(const double * A, const double * x, double * y, 
     // Calculate the size of the shared memory
     size_t sharedMemSize = num_cols / threadsPerRow * sizeof(double);
 
-    double * y_partial;
-
-    err = cudaMalloc((void**)&y_partial, num_rows * threadsPerRow * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaMemset(y_partial, 0, num_rows * threadsPerRow * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
 
     // Launch the kernel
@@ -174,7 +173,6 @@ void gemv_tiled_kernel_launcher(const double * A, const double * x, double * y, 
     err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
 
-    err = cudaFree(y_partial); cuda_err_check(err, __FILE__, __LINE__);
 }
 
 
@@ -211,12 +209,16 @@ void par_conjugate_gradients(const double * h_A, const double * h_b, double * h_
     err = cudaMemcpy(d_r, d_b, size * sizeof(double), cudaMemcpyDeviceToDevice); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaMemcpy(d_p, d_b, size * sizeof(double), cudaMemcpyDeviceToDevice); cuda_err_check(err, __FILE__, __LINE__);
 
+    double * y_partial;
+
+    err = cudaMalloc((void**)&y_partial, size * threadsPerRow * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
+
     bb = dot_kernel_launcher(d_b, d_b, size);
     rr = bb;
     for(num_iters = 1; num_iters <= max_iters; num_iters++)
     {
         // gemv(1.0, A, p, 0.0, Ap, size, size);
-        gemv_tiled_kernel_launcher(d_A, d_p, d_Ap, size, size);
+        gemv_tiled_kernel_launcher(d_A, d_p, d_Ap, y_partial, size, size);
         // gemv_kernel_launcher(1.0, d_A, d_p, 0.0, d_Ap, size, size);
         // alpha = rr / dot(p, Ap, size);
         alpha = rr / dot_kernel_launcher(d_p, d_Ap, size);
@@ -241,6 +243,7 @@ void par_conjugate_gradients(const double * h_A, const double * h_b, double * h_
     err = cudaFree(d_p); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaFree(d_Ap); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaFree(d_x); cuda_err_check(err, __FILE__, __LINE__);
+    err = cudaFree(y_partial); cuda_err_check(err, __FILE__, __LINE__);
 
     if(num_iters <= max_iters)
     {

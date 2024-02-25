@@ -88,12 +88,11 @@ int main(int argc, char ** argv)
         size = matrix_rows;
     }
 
-    int number_of_tests = 1;
-    int times[number_of_tests];
-    double sol [number_of_tests][size];
-    std::function<void(double*, double*, double*, size_t, int, double)> implementations_to_test[number_of_tests] = 
-    {luca::par_conjugate_gradients_multi_gpu_nccl};
-    std::string names[number_of_tests] = {"NCCL"};
+    int exec_time;
+    double sol[size];
+    std::function<void(double*, double*, double*, size_t, int, double)> implementations_to_test[255];
+    implementations_to_test[0] = luca::par_conjugate_gradients_multi_gpu_nccl;
+    std::string names[] = {"NCCL"};
 
     int impl_used = argc > 6 ? atoi(argv[6]) : 0;
 
@@ -113,17 +112,17 @@ int main(int argc, char ** argv)
 
         long start_time = 0, end_time = 0;
 
+        MPI_Barrier(MPI_COMM_WORLD);
         if (rank == 0){
-            times[impl_used] = 0;
+            exec_time = 0;
             printf("Solving the system with %s ...\n", names[impl_used].c_str());
             start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         }
-        MPI_Barrier(MPI_COMM_WORLD);
-        implementations_to_test[impl_used](matrix, rhs, sol[impl_used], size, max_iters, rel_error);
+        implementations_to_test[impl_used](matrix, rhs, sol, size, max_iters, rel_error);
         if (rank == 0){
             end_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-            times[impl_used] = (end_time - start_time);
-            printf("Done in %f milliseconds\n", times[impl_used] / 1000.0);
+            exec_time = (end_time - start_time);
+            printf("Done in %f milliseconds\n", exec_time / 1000.0);
         }
 
         MPI_Finalize();
@@ -132,7 +131,7 @@ int main(int argc, char ** argv)
 
     
     // printf("Writing solution to file ...\n");
-    bool success_write_sol = write_matrix_to_file(output_file_sol, sol[impl_used], size, 1);
+    bool success_write_sol = write_matrix_to_file(output_file_sol, sol, size, 1);
     if(!success_write_sol)
     {
         fprintf(stderr, "Failed to save solution\n");
@@ -140,7 +139,7 @@ int main(int argc, char ** argv)
     }
 
     FILE * time_f = fopen("output/time.txt", "w");
-    fprintf(time_f, "%d", time);
+    fprintf(time_f, "%d", exec_time);
     fclose(time_f);
    
     cudaError_t err;
