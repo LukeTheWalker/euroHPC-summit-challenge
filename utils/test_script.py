@@ -36,6 +36,9 @@ def compile(version):
 def run(version, matrix_file, vector_file, output_file, tolerance, max_iterations):
     # make run with arguments
     run_command = ['./bin/conj', matrix_file, vector_file, output_file, tolerance, max_iterations, str(implementation_numbers[version])]
+    if version == 'NCCL':
+        run_command = ['srun'] + run_command
+    
     subprocess.run(run_command, check=True)
 
 def check_results(output_file, reference_file):
