@@ -146,7 +146,7 @@ int main(int argc, char ** argv)
     err = cudaFreeHost(matrix); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaFreeHost(rhs); cuda_err_check(err, __FILE__, __LINE__);
 
-    printf("Finished successfully\n\n");
+    printf("Finished successfully\n");
 
     return 0;
 }

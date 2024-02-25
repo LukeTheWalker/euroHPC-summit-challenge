@@ -23,6 +23,8 @@ def compile(version):
     if version == 'OPENMP' or version == 'SERIAL':
         flags += ['USE_CUDA=0']
 
+    print(f'----------------- Using {version} -----------------')
+
     # make clean
     clean_command = ['make', 'clean']
     with open(os.devnull, 'w') as devnull:
