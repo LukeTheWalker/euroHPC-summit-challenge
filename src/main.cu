@@ -11,7 +11,7 @@
 
 #if USE_CUDA == 1
 #include <conjugate_gradients_gpu_tommy.cu>
-#include <conjugate_gradients_mutli_gpu.cu>
+#include <conjugate_gradients_multi_gpu.cu>
 #include <conjugate_gradients_cublas.cu>
 #include <conjugate_gradients_gpu.cu>
 #endif
@@ -94,10 +94,9 @@ int main(int argc, char ** argv)
     int time;
     double sol[size];
     std::function<void(double*, double*, double*, size_t, int, double)> implementations_to_test[255]; 
-        #if USE_NCCL == 1 
-        implementations_to_test[0] = luca::par_conjugate_gradients_multi_gpu;
-        #endif
+        
         #if USE_CUDA == 1
+        implementations_to_test[0] = luca::par_conjugate_gradients_multi_gpu;
         implementations_to_test[1] = conjugate_gradients_cublas;
         implementations_to_test[2] = luca::par_conjugate_gradients;
         implementations_to_test[3] = tommy::conjugate_gradients<true>; 

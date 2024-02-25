@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <utils.cuh>
 #include <conjugate_gradients_gpu.cu>
-#include <conjugate_gradients_mutli_gpu.cu>
+#include <conjugate_gradients_multi_gpu.cu>
 #include <nccl.h>
 #include <omp.h>
 
@@ -17,7 +17,7 @@ extern ncclComm_t * comms;
 
 namespace luca {
 
-void gemv_mutli_gpu_nccl_tiled_kernel_launcher(const double ** local_A, const double * x, double * y, size_t * num_rows_per_device, size_t * num_rows_per_node, size_t num_cols, cudaStream_t * s)
+void gemv_multi_gpu_nccl_tiled_kernel_launcher(const double ** local_A, const double * x, double * y, size_t * num_rows_per_device, size_t * num_rows_per_node, size_t num_cols, cudaStream_t * s)
 {
     int number_of_devices; cudaError_t err; ncclResult_t nccl_err;
 
@@ -160,7 +160,7 @@ void par_conjugate_gradients_multi_gpu_nccl(const double * h_A, const double * h
         mpi_err = MPI_Bcast(&done, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD); mpi_err_check(mpi_err, __FILE__, __LINE__);
         if (done) { break; }
         // gemv(1.0, A, p, 0.0, Ap, size, size);
-        gemv_mutli_gpu_nccl_tiled_kernel_launcher(d_local_A_transposed, d_p, d_Ap, number_of_rows_per_device, number_of_rows_per_node, size, s);
+        gemv_multi_gpu_nccl_tiled_kernel_launcher(d_local_A_transposed, d_p, d_Ap, number_of_rows_per_device, number_of_rows_per_node, size, s);
         // alpha = rr / dot(p, Ap, size);
         if (myRank == 0) {
             alpha = rr / dot_kernel_launcher(d_p, d_Ap, size);

@@ -34,7 +34,7 @@ __global__ void transpose(double *odata, const double *idata, int nrows, int nco
     }       
 }
 
-void gemv_mutli_gpu_tiled_kernel_launcher(const double ** local_A, const double * x, double * y, size_t * num_rows_per_device, size_t num_cols, cudaStream_t * s)
+void gemv_multi_gpu_tiled_kernel_launcher(const double ** local_A, const double * x, double * y, size_t * num_rows_per_device, size_t num_cols, cudaStream_t * s)
 {
     int number_of_devices; cudaError_t err; /*ncclResult_t nccl_err;*/
 
@@ -158,7 +158,7 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
     {
         // err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
         // gemv(1.0, A, p, 0.0, Ap, size, size);
-        gemv_mutli_gpu_tiled_kernel_launcher(d_local_A_transposed, d_p, d_Ap, number_of_rows_per_device, size, s);
+        gemv_multi_gpu_tiled_kernel_launcher(d_local_A_transposed, d_p, d_Ap, number_of_rows_per_device, size, s);
         // gemv_kernel_launcher(1.0, d_A, d_p, 0.0, d_Ap, size, size);
         // alpha = rr / dot(p, Ap, size);
         alpha = rr / dot_kernel_launcher(d_p, d_Ap, size);

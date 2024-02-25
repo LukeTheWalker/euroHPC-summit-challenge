@@ -6,8 +6,8 @@
 #include <conjugate_gradients_cpu_serial.hpp>
 #include <conjugate_gradients_cpu_openmp.hpp>
 #include <conjugate_gradients_gpu_tommy.cu>
-#include <conjugate_gradients_mutli_gpu.cu>
-#include <conjugate_gradients_mutli_gpu_nccl.cu>
+#include <conjugate_gradients_multi_gpu.cu>
+#include <conjugate_gradients_multi_gpu_nccl.cu>
 #include <conjugate_gradients_cublas.cu>
 #include <utils.cuh>
 #include <functional>
