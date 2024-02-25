@@ -2,15 +2,20 @@
 #include <cstdlib>
 #include <cmath>
 #include <chrono>
-#include <conjugate_gradients_gpu.cu>
+
 #include <conjugate_gradients_cpu_serial.hpp>
 #include <conjugate_gradients_cpu_openmp.hpp>
-#include <conjugate_gradients_gpu_tommy.cu>
-#include <conjugate_gradients_mutli_gpu.cu>
-#include <conjugate_gradients_cublas.cu>
 #include <utils.cuh>
 #include <functional>
 #include <string>
+
+#if USE_CUDA == 1
+#include <conjugate_gradients_gpu_tommy.cu>
+#include <conjugate_gradients_mutli_gpu.cu>
+#include <conjugate_gradients_cublas.cu>
+#include <conjugate_gradients_gpu.cu>
+#endif
+
 
 int main(int argc, char ** argv)
 {
@@ -86,12 +91,21 @@ int main(int argc, char ** argv)
         size = matrix_rows;
     }
 
-    int number_of_tests = 6;
-    int times[number_of_tests];
-    double sol [number_of_tests][size];
-    std::function<void(double*, double*, double*, size_t, int, double)> implementations_to_test[number_of_tests] = 
-    {conjugate_gradients_cublas, luca::par_conjugate_gradients_multi_gpu, luca::par_conjugate_gradients, tommy::conjugate_gradients<true>, conjugate_gradients_cpu_openmp, conjugate_gradients_cpu_serial};
-    std::string names[number_of_tests] = {"cuBLAS", "MGPU", "Luca GPU", "Tommy GPU", "CPU (OpenMP)", "CPU (Serial)"};
+    int time;
+    double sol[size];
+    std::function<void(double*, double*, double*, size_t, int, double)> implementations_to_test[255]; 
+        #if USE_NCCL == 1 
+        implementations_to_test[0] = luca::par_conjugate_gradients_multi_gpu;
+        #endif
+        #if USE_CUDA == 1
+        implementations_to_test[1] = conjugate_gradients_cublas;
+        implementations_to_test[2] = luca::par_conjugate_gradients;
+        implementations_to_test[3] = tommy::conjugate_gradients<true>; 
+        #endif
+        implementations_to_test[4] = conjugate_gradients_cpu_openmp; 
+        implementations_to_test[5] = conjugate_gradients_cpu_serial;
+
+    std::string names[] = {"MGPU", "cuBLAS", "Luca GPU", "Tommy GPU", "CPU (OpenMP)", "CPU (Serial)"};
 
     int impl_used = argc > 6 ? atoi(argv[6]) : 0;
 
@@ -106,60 +120,35 @@ int main(int argc, char ** argv)
         }
         #endif
         
-        times[impl_used] = 0;
+        time = 0;
         printf("Solving the system with %s ...\n", names[impl_used].c_str());
         double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        implementations_to_test[impl_used](matrix, rhs, sol[impl_used], size, max_iters, rel_error);
+        implementations_to_test[impl_used](matrix, rhs, sol, size, max_iters, rel_error);
         double end_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        times[impl_used] = (end_time - start_time);
-        printf("Done in %f milliseconds\n", times[impl_used] / 1000.0);
+        time = (end_time - start_time);
+        printf("Done in %f milliseconds\n", time / 1000.0);
     }
 
     
     // printf("Writing solution to file ...\n");
-    bool success_write_sol = write_matrix_to_file(output_file_sol, sol[impl_used], size, 1);
+    bool success_write_sol = write_matrix_to_file(output_file_sol, sol, size, 1);
     if(!success_write_sol)
     {
         fprintf(stderr, "Failed to save solution\n");
         return 6;
     }
-    // printf("Done\n");
-    // printf("\n");
 
-    // check if all solutions are the same as the serial one, otherwise print the first 10 elements of each solution and the error
-    // bool all_same = true;
-    // for(size_t i = 0; i < 4; i++)
-    // {
-    //     for(size_t j = 0; j < size; j++)
-    //     {
-    //         if(fabs(sol[3][j] - sol[i][j]) > 1e-6)
-    //         {
-    //             printf("Solution %ld is different from the serial one\n", i);
-    //             printf("First 10 elements of the serial solution:\n");
-    //             for(int k = 0; k < 10; k++)
-    //             {
-    //                 printf("%f\n", sol[3][k]);
-    //             }
-    //             printf("\n");
-    //             printf("First 10 elements of the solution %ld:\n", i);
-    //             for(int k = 0; k < 10; k++)
-    //             {
-    //                 printf("%f\n", sol[i][k]);
-    //             }
-    //             printf("\n");
-    //             printf("Error: %e\n", fabs(sol[3][j] - sol[i][j]));
-    //             printf("\n");
-    //             break;
-    //         }
-    //     }
-    //     if(!all_same) break;
-    // }
-   
+    FILE * time_f = fopen("output/time.txt", "w");
+    fprintf(time_f, "%d", time);
+    fclose(time_f);
+
+    #if USE_CUDA == 1
     cudaError_t err;
     err = cudaFreeHost(matrix); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaFreeHost(rhs); cuda_err_check(err, __FILE__, __LINE__);
+    #endif
 
-    printf("Finished successfully\n\n");
+    printf("Finished successfully\n");
 
     return 0;
 }

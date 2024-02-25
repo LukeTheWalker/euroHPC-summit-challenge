@@ -69,6 +69,7 @@ void print_matrix(const double * matrix, size_t num_rows, size_t num_cols, FILE 
     }
 }
 
+#if USE_CUDA == 1
 void cuda_err_check (cudaError_t err, const char *file, int line)
 {
     if (err != cudaSuccess)
@@ -77,7 +78,9 @@ void cuda_err_check (cudaError_t err, const char *file, int line)
         exit (EXIT_FAILURE);
     }
 }
+#endif
 
+#if USE_NCCL == 1
 void nccl_err_check (ncclResult_t err, const char *file, int line)
  {
      if (err != ncclSuccess)
@@ -167,3 +170,4 @@ void initialize_nccl () {
     nccl_err = ncclGroupEnd(); nccl_err_check(nccl_err, __FILE__, __LINE__);
     fprintf(stderr,"[MPI Rank %d] responsible for GPU %d-%d\n", myRank, myRank * nDevices, myRank * nDevices + nDevices - 1);
 }
+#endif

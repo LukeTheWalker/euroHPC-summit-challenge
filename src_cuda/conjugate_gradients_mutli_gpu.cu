@@ -2,10 +2,8 @@
 #define MULTI_GPU_LUCA_HPP
 
 #include <cstdio>
-#include <cuda_runtime.h>
 #include <utils.cuh>
 #include <conjugate_gradients_gpu.cu>
-#include <nccl.h>
 #include <omp.h>
 
 #define nranks 4

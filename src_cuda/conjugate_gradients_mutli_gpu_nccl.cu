@@ -2,7 +2,6 @@
 #define MULTI_GPU_NCCL_LUCA_HPP
 
 #include <cstdio>
-#include <cuda_runtime.h>
 #include <utils.cuh>
 #include <conjugate_gradients_gpu.cu>
 #include <conjugate_gradients_mutli_gpu.cu>

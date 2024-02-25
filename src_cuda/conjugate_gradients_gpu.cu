@@ -2,7 +2,6 @@
 #define GPU_LUCA_HPP
 
 #include <cstdio>
-#include <cuda_runtime.h>
 #include <utils.cuh>
 
 namespace luca {

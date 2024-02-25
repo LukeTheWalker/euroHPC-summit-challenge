@@ -25,14 +25,15 @@ ifeq ($(USE_CUDA), 1)
  		NCCLDFLAGS := -lnccl
  	endif
 	CXX := nvcc
-	CUFLAGS := -arch=sm_80 -Xcompiler -Wall -Xcompiler -Wextra 
+	CUFLAGS := -arch=sm_80 -Xcompiler -Wall -Xcompiler -Wextra -G
 	CULDFLAGS := -lcuda $(NCCLDFLAGS) -lcublas
 else
 	CXX := g++
+	CROSSCOMPILECU := -x c++
 endif
 
-CXXFLAGS = -I$(IDIR) -I$(SCUDADIR) -std=c++17 -g -G -O$(O_LEVEL) $(CUFLAGS) 
-CPPFLAGS = -DUSE_CUDA=$(USE_CUDA) -DUSE_OMP=$(USE_OMP) 
+CXXFLAGS = -I$(IDIR) -I$(SCUDADIR) -std=c++17 -g -O$(O_LEVEL) $(CUFLAGS) 
+CPPFLAGS = -DUSE_CUDA=$(USE_CUDA) -DUSE_OMP=$(USE_OMP) -DUSE_NCCL=$(USE_NCCL)
 LDFLAGS = $(CULDFLAGS)
 
 ifeq ($(USE_OMP), 1)
@@ -77,7 +78,7 @@ $(ODIR)/%.o: $(SDIR)/%.cpp Makefile | $(ODIR)
 	$(CXX) -c -o $@ $< $(CXXFLAGS) $(CPPFLAGS) -MMD -MP
 
 $(ODIR)/%.o: $(SDIR)/%.cu Makefile | $(ODIR)
-	$(CXX) -c -o $@ $< $(CXXFLAGS) $(CPPFLAGS) -MMD -MP
+	$(CXX) -c -o $@ $(CROSSCOMPILECU) $< $(CXXFLAGS) $(CPPFLAGS) -MMD -MP
 
 -include $(DEPS)
 

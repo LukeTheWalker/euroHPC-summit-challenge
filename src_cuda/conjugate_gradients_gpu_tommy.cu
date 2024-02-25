@@ -2,9 +2,9 @@
 #define GPU_TOMMY_HPP
 
 #include <iostream>
-#include <cuda.h>
-#include <cuda_runtime.h>
 #include <chrono>
+#include <conjugate_gradients_gpu.cu>
+
 #define GRID_SIZE 350
 #define BLOCK_SIZE 512
 
