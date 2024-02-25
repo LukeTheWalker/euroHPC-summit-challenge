@@ -3,7 +3,8 @@ import subprocess
 import struct
 import os
 
-reference_time = 43616498; # in milliseconds luca's machine
+# reference_time = 43616498; # in milliseconds luca's machine
+reference_time = 58690450; # meluxina
 
 implementation_numbers = {
     'NCCL': 0,
