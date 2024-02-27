@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdexcept>
 #include <utils.cuh>
+#include <chrono>
 
 // CUDA API error checking
 #define CUDA_CHECK(err)                                                                            \
@@ -62,6 +63,10 @@ void conjugate_gradients_cublas(const double * h_A, const double * h_b, double *
     const double one = 1.0;
     const double zero = 0.0;
 
+    unsigned long long int start, end;
+
+    start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
     cublasDdot(handle, size, d_b, 1, d_b, 1, &bb);
     rr = bb;
     for(num_iters = 1; num_iters <= max_iters; num_iters++)
@@ -86,6 +91,10 @@ void conjugate_gradients_cublas(const double * h_A, const double * h_b, double *
         double one = 1.0;
         CUBLAS_CHECK(cublasDaxpy(handle, size, &one, d_r, 1, d_p, 1));
     }
+
+    end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+    printf("CUBlas CG net time: %llums\n", end - start);
 
     CUBLAS_CHECK(cublasDestroy(handle));
 

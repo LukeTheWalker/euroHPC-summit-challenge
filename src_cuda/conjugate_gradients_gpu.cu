@@ -3,6 +3,7 @@
 
 #include <cstdio>
 #include <utils.cuh>
+#include <chrono>
 
 static constexpr int threadsPerRow = 10;
 static constexpr int rowsperblock = 1024;
@@ -213,6 +214,10 @@ void par_conjugate_gradients(const double * h_A, const double * h_b, double * h_
 
     err = cudaMalloc((void**)&y_partial, size * threadsPerRow * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
 
+    unsigned long long int start, end;
+
+    start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
     bb = dot_kernel_launcher(d_b, d_b, size);
     rr = bb;
     for(num_iters = 1; num_iters <= max_iters; num_iters++)
@@ -234,6 +239,10 @@ void par_conjugate_gradients(const double * h_A, const double * h_b, double * h_
         // axpby(1.0, r, beta, p, size);
         axpby_kernel_launcher(1.0, d_r, beta, d_p, size);
     }
+
+    end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+    printf("Luca CG net time: %llums\n", end - start);
 
     transfer_to_host(d_x, h_x, size);
 
