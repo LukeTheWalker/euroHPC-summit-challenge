@@ -135,8 +135,8 @@ void initialize_nccl () {
     int mpi_err; ncclResult_t nccl_err; cudaError_t cuda_err;
 
     // get localRank
-    mpi_err = MPI_Comm_rank(MPI_COMM_WORLD, &myRank); mpi_err_check(mpi_err, __FILE__, __LINE__);
-    mpi_err = MPI_Comm_size(MPI_COMM_WORLD, &nRanks); mpi_err_check(mpi_err, __FILE__, __LINE__);
+    mpi_err = MPI_Comm_rank(MPI_COMM_WORLD, (int*)&myRank); mpi_err_check(mpi_err, __FILE__, __LINE__);
+    mpi_err = MPI_Comm_size(MPI_COMM_WORLD, (int*)&nRanks); mpi_err_check(mpi_err, __FILE__, __LINE__);
 
     int nDevices;
     cuda_err = cudaGetDeviceCount(&nDevices); cuda_err_check(cuda_err, __FILE__, __LINE__);
