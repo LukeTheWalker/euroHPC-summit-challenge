@@ -128,7 +128,7 @@ void getHostName(char *hostname, int maxlen)
 
 ncclUniqueId id;
 ncclComm_t * comms;
-int myRank, nRanks, localRank = 0;
+size_t myRank, nRanks, localRank = 0;
 
 void initialize_nccl () {
 

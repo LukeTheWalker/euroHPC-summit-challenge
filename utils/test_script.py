@@ -45,10 +45,9 @@ def run(version, matrix_file, vector_file, output_file, tolerance, max_iteration
     subprocess.run(run_command, check=True)
 
 def check_results(output_file, reference_file, implementation):
-    # read the file written with:
-    # fwrite(&num_rows, sizeof(size_t), 1, file);
-    # fwrite(&num_cols, sizeof(size_t), 1, file);
-    # fwrite(matrix, sizeof(double), num_rows * num_cols, file);
+    if reference_file is None:
+        print('No reference file provided')
+        return
 
     with open(output_file, 'rb') as file:
         num_rows = int.from_bytes(file.read(8), 'little')
@@ -87,14 +86,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Compile and run specific CG solver')
 
     # Add the version argument "cuBLAS", "MGPU", "Luca GPU", "Tommy GPU", "CPU (OpenMP)", "CPU (Serial)"
-    parser.add_argument('implementation', choices=['NCCL', 'MGPU', 'CUBLAS', 'TILED', 'ROWS', 'OPENMP', 'SERIAL', 'ALL', 'ALL_GPU'], help='The version of the program to run')
     parser.add_argument('matrix_file', help='The file containing the matrix to solve')
     parser.add_argument('vector_file', help='The file containing the vector to solve')
     parser.add_argument('output_file', help='The file to write the solution to')
     parser.add_argument('tolerance', help='The tolerance for the solution')
     parser.add_argument('max_iterations', help='The maximum number of iterations to perform')
-    parser.add_argument('reference_file', help='The reference file to compare the output to')
-
+    parser.add_argument('reference_file', nargs='?', default=None, help='The reference file to compare the output to')
+    parser.add_argument('implementation', choices=['NCCL', 'MGPU', 'CUBLAS', 'TILED', 'ROWS', 'OPENMP', 'SERIAL', 'ALL', 'ALL_GPU'], help='The version of the program to run')
+    
     # Parse the command-line arguments
     args = parser.parse_args()
 

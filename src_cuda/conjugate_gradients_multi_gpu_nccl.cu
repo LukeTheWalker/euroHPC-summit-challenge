@@ -11,7 +11,7 @@
 #define TILE_DIM 32
 #define BLOCK_ROWS 8
 
-extern int myRank, nRanks;
+extern size_t myRank, nRanks;
 extern ncclComm_t * comms;
 
 
@@ -19,9 +19,9 @@ namespace luca {
 
 void gemv_multi_gpu_nccl_tiled_kernel_launcher(const double ** local_A, const double * x, double * y, double ** y_partial_local, double ** y_local, double ** x_local, size_t * num_rows_per_device, size_t * num_rows_per_node, size_t num_cols, cudaStream_t * s)
 {
-    int number_of_devices; cudaError_t err; ncclResult_t nccl_err;
+    size_t number_of_devices; cudaError_t err; ncclResult_t nccl_err;
 
-    err = cudaGetDeviceCount(&number_of_devices); cuda_err_check(err, __FILE__, __LINE__);
+    err = cudaGetDeviceCount((int*)&number_of_devices); cuda_err_check(err, __FILE__, __LINE__);
 
     int threadsPerRow = 10;
     size_t sharedMemSize = num_cols / threadsPerRow * sizeof(double);
@@ -52,10 +52,10 @@ void gemv_multi_gpu_nccl_tiled_kernel_launcher(const double ** local_A, const do
         nccl_err = ncclSend(y_local[i], num_rows_per_device[i], ncclDouble, 0, comms[i], s[i]); nccl_err_check(nccl_err, __FILE__, __LINE__);
     
     if (myRank == 0){
-        int progressive_offset = 0;
-        for (int r = 0; r < nRanks; r++){
-            for (int i = 0; i < number_of_devices; i++){
-                int num_to_transfer = (i == number_of_devices - 1) ? num_rows_per_node[r] - i * (num_rows_per_node[r] / number_of_devices) : num_rows_per_node[r] / number_of_devices;
+        size_t progressive_offset = 0;
+        for (size_t r = 0; r < nRanks; r++){
+            for (size_t i = 0; i < number_of_devices; i++){
+                size_t num_to_transfer = (i == number_of_devices - 1) ? num_rows_per_node[r] - i * (num_rows_per_node[r] / number_of_devices) : num_rows_per_node[r] / number_of_devices;
                 nccl_err = ncclRecv(y + progressive_offset, num_to_transfer, ncclDouble, r * number_of_devices + i, comms[0], s[0]); nccl_err_check(nccl_err, __FILE__, __LINE__);
                 progressive_offset += num_to_transfer;
             }
@@ -110,7 +110,7 @@ void par_conjugate_gradients_multi_gpu_nccl(const double * h_A, const double * h
         err = cudaMallocAsync((void**)&d_local_A[i], size * number_of_rows_per_device[i] * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaMallocAsync((void**)&d_local_A_transposed[i], size * number_of_rows_per_device[i] * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
         
-        int offset =  myRank * (size / nRanks) * size + i * (size / nRanks / number_of_devices) * size;
+        size_t offset =  myRank * (size / nRanks) * size + i * (size / nRanks / number_of_devices) * size;
         err = cudaMemcpyAsync((void*)(d_local_A[i]), h_A + offset, size * number_of_rows_per_device[i] * sizeof(double), cudaMemcpyHostToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);
 
         transpose<<<dim3(size / TILE_DIM + 1, size / TILE_DIM + 1), dim3(TILE_DIM, TILE_DIM), 0, s[i]>>>((double*)d_local_A_transposed[i], d_local_A[i], number_of_rows_per_device[i], size);
