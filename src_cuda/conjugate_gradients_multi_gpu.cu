@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <utils.cuh>
 #include <conjugate_gradients_gpu.cu>
+#include <chrono>
 #include <omp.h>
 
 #define nranks 4
@@ -134,6 +135,10 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
     // sync all streams
     for(int i = 0; i < number_of_devices; i++) { err = cudaStreamSynchronize(s[i]); cuda_err_check(err, __FILE__, __LINE__); err = cudaFreeAsync((void*)d_local_A[i], s[i]); cuda_err_check(err, __FILE__, __LINE__);}
 
+    unsigned long long int start, end;
+
+    start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
     bb = dot_kernel_launcher(d_b, d_b, size);
     rr = bb;
     for(num_iters = 1; num_iters <= max_iters; num_iters++)
@@ -156,6 +161,10 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
         // axpby(1.0, r, beta, p, size);
         axpby_kernel_launcher(1.0, d_r, beta, d_p, size);
     }
+
+    end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+    printf("MGPU CG net time: %llums\n", end - start);
 
     transfer_to_host(d_x, h_x, size);
 
