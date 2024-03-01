@@ -5,15 +5,13 @@
 #include <utils.cuh>
 #include <chrono>
 
-static constexpr int threadsPerRow = 10;
-static constexpr int rowsperblock = 1024;
 namespace luca {
 
 __global__ void dot_kernel(const double * x, const double * y, double * result, size_t size)
 {
     __shared__ double cache[256];
-    int tid = threadIdx.x + blockIdx.x * blockDim.x;
-    int cacheIndex = threadIdx.x;
+    size_t tid = (size_t)threadIdx.x + (size_t)blockIdx.x * (size_t)blockDim.x;
+    size_t cacheIndex = (size_t)threadIdx.x;
 
     double temp = 0.0;
     while(tid < size)
@@ -26,7 +24,7 @@ __global__ void dot_kernel(const double * x, const double * y, double * result, 
 
     __syncthreads();
 
-    int i = blockDim.x / 2;
+    size_t i = blockDim.x / 2;
     while(i != 0)
     {
         if(cacheIndex < i)
@@ -45,8 +43,8 @@ __global__ void dot_kernel(const double * x, const double * y, double * result, 
 
 double dot_kernel_launcher(const double * d_x, const double * d_y, size_t size)
 {
-    int block_size = 256;
-    int grid_size = (size + block_size - 1) / block_size;
+    size_t block_size = 256;
+    size_t grid_size = (size + block_size - 1) / block_size;
 
     double * d_result, result;
 
@@ -58,6 +56,7 @@ double dot_kernel_launcher(const double * d_x, const double * d_y, size_t size)
     dot_kernel<<<grid_size, block_size>>>(d_x, d_y, d_result, size);
 
     err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
+    err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
 
     err = cudaMemcpy(&result, d_result, sizeof(double), cudaMemcpyDeviceToHost); cuda_err_check(err, __FILE__, __LINE__);
 
@@ -68,15 +67,15 @@ double dot_kernel_launcher(const double * d_x, const double * d_y, size_t size)
 
 __global__ void axpby_kernel(double alpha, const double * x, double beta, double * y, size_t size)
 {
-    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    size_t tid = (size_t)threadIdx.x + (size_t)blockIdx.x * (size_t)blockDim.x;
     if(tid < size)
         y[tid] = fma(alpha, x[tid], beta * y[tid]);
 }
 
 void axpby_kernel_launcher(double alpha, const double * x, double beta, double * y, size_t size)
 {
-    int block_size = 256;
-    int grid_size = (size + block_size - 1) / block_size;
+    size_t block_size = 256;
+    size_t grid_size = (size + block_size - 1) / block_size;
 
     axpby_kernel<<<grid_size, block_size>>>(alpha, x, beta, y, size);
     
@@ -107,15 +106,16 @@ void gemv_kernel_launcher(double alpha, const double * A, const double * x, doub
     cudaError_t err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
 }
 
-__global__ void gemv_tiled_kernel (const double * a, const double * x, double * y, int m, int n){
+__global__ void gemv_tiled_kernel (const double * a, const double * x, double * y, size_t m, size_t n){
     extern __shared__ double work[];
-    int global_id_x = blockIdx.x * blockDim.x + threadIdx.x;
-    int global_id_y = blockIdx.y * blockDim.y + threadIdx.y;
-    int ncols = n / gridDim.x;
-    int col0 = ncols * global_id_x; // first value to load
-    for (int k = 0; k < ncols; k += blockDim.y)
+    size_t global_id_x = (size_t)blockIdx.x * (size_t)blockDim.x + (size_t)threadIdx.x;
+    size_t global_id_y = (size_t)blockIdx.y * (size_t)blockDim.y + (size_t)threadIdx.y;
+    size_t ncols = n / (size_t)gridDim.x;
+    size_t col0 = ncols * global_id_x; // first value to load
+
+    for (size_t k = 0; k < ncols; k += blockDim.y)
     {
-        int col = k + threadIdx.y;
+        size_t col = k + threadIdx.y;
         if (col < ncols && col0 + col < n) work[col] = x[col0 + col];
     }
     __syncthreads(); // sync group
@@ -123,14 +123,14 @@ __global__ void gemv_tiled_kernel (const double * a, const double * x, double * 
     if (global_id_y >= m) return;
 
     double sum = 0;
-    for (int k = 0; k < ncols; k++)
+    for (size_t k = 0; k < ncols; k++)
     {
         sum += a[global_id_y + m * (col0 + k)] * work[k];
     }
     // if last block and ncols is not multiple of blockDim.y
     if (blockIdx.x == gridDim.x - 1 && n % gridDim.x != 0)
     {
-        for (int k = ncols; col0 + k < n; k++)
+        for (size_t k = ncols; col0 + k < n; k++)
         {
             sum += a[global_id_y + m * (col0 + k)] * x[col0 + k];
         }
@@ -138,12 +138,12 @@ __global__ void gemv_tiled_kernel (const double * a, const double * x, double * 
     y[global_id_y + m * global_id_x] = sum;
 }
 
-__global__ void reduce_rows(double * y_partial, double * y, int m, int p)
+__global__ void reduce_rows(double * y_partial, double * y, size_t m, size_t p)
 {
-    int global_id_x = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t global_id_x = (size_t)blockIdx.x * (size_t)blockDim.x + (size_t)threadIdx.x;
     if (global_id_x >= m) return;
     double sum = 0;
-    for (int k = 0; k < p; k++)
+    for (size_t k = 0; k < p; k++)
     {
         sum += y_partial[global_id_x + m * k];
     }
@@ -211,6 +211,9 @@ void par_conjugate_gradients(const double * h_A, const double * h_b, double * h_
     err = cudaMemcpy(d_p, d_b, size * sizeof(double), cudaMemcpyDeviceToDevice); cuda_err_check(err, __FILE__, __LINE__);
 
     double * y_partial;
+
+    size_t sharedMemSize = 48000;
+    size_t threadsPerRow = (size * sizeof(double)) / sharedMemSize;
 
     err = cudaMalloc((void**)&y_partial, size * threadsPerRow * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
 

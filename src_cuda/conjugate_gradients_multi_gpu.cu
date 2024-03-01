@@ -11,14 +11,16 @@
 #define TILE_DIM 32
 #define BLOCK_ROWS 8
 
+#define SHMEM 800
+
 namespace luca {
 
 
-__global__ void transpose(double *odata, const double *idata, int nrows, int ncols)
+__global__ void transpose(double *odata, const double *idata, size_t nrows, size_t ncols)
 {
     __shared__ double block[TILE_DIM][TILE_DIM+1];
-    int x = blockIdx.x * TILE_DIM + threadIdx.x;
-    int y = blockIdx.y * TILE_DIM + threadIdx.y;
+    size_t x = (size_t)blockIdx.x * TILE_DIM + (size_t)threadIdx.x;
+    size_t y = (size_t)blockIdx.y * TILE_DIM + (size_t)threadIdx.y;
     if((x < ncols) && (y < nrows))
     {
         block[threadIdx.y][threadIdx.x] = idata[y*ncols + x];
@@ -38,17 +40,24 @@ void gemv_multi_gpu_tiled_kernel_launcher(const double ** local_A, const double 
 
     err = cudaGetDeviceCount(&number_of_devices); cuda_err_check(err, __FILE__, __LINE__);
 
-    int threadsPerRow = 10;
-    size_t sharedMemSize = num_cols / threadsPerRow * sizeof(double);
+    // size_t threadsPerRow = 10;
+    // size_t sharedMemSize = num_cols / threadsPerRow * sizeof(double);
+    size_t sharedMemSize = SHMEM;
+    size_t threadsPerRow = ((num_cols * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
 
     for (int i = 0; i < number_of_devices; i++)
     {
         err = cudaSetDevice(i); cuda_err_check(err, __FILE__, __LINE__);
 
-        int rowsperblock = 1024;
+        size_t rowsperblock = 1024;
         // Define the size of the grid and blocks
         dim3 blockDim(1, rowsperblock);
         dim3 gridDim(threadsPerRow, (num_rows_per_device[i] + rowsperblock - 1) / rowsperblock);
+
+        // fprintf(stderr, "Device %d: %lu rows, %lu cols\n", i, num_rows_per_device[i], num_cols);
+        // fprintf(stderr, "Device %d: blockDim(%d, %d), gridDim(%d, %d), sharedMemSize(%lu)\n", i, blockDim.x, blockDim.y, gridDim.x, gridDim.y, sharedMemSize);
+
+        // fprintf(stderr, "Device %d: %lu threadsPerRow, mem_allcoation for y_partial_local %lu, mem_allcoation for y_local %lu, mem_allcoation for x_local %lu\n", i, threadsPerRow, num_rows_per_device[i] * threadsPerRow * sizeof(double), num_rows_per_device[i] * sizeof(double), num_cols * sizeof(double));
 
         err = cudaMemsetAsync(y_partial_local[i], 0, num_rows_per_device[i] * threadsPerRow * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaMemcpyAsync(x_local[i], x, num_cols * sizeof(double), cudaMemcpyDeviceToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);
@@ -98,15 +107,21 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
 
     omp_set_num_threads(number_of_devices);
 
+
+    size_t sharedMemSize = SHMEM;
+    size_t threadsPerRow = ((size * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
+
+    fprintf(stderr, "SHMEM: %lu, threadsPerRow: %lu\n", sharedMemSize, threadsPerRow);
+
     #pragma omp parallel for
-    for(int i = 0; i < number_of_devices; i++)
+    for(size_t i = 0; i < (size_t)number_of_devices; i++)
     {   
-        number_of_rows_per_device[i] = (i == number_of_devices - 1) ? size - i * (size / number_of_devices) : size / number_of_devices;
+        number_of_rows_per_device[i] = (i == (size_t)number_of_devices - 1) ? size - i * (size / (size_t)number_of_devices) : size / (size_t)number_of_devices;
         err = cudaSetDevice(i); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaStreamCreateWithFlags(&s[i], cudaStreamNonBlocking); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaMallocAsync((void**)&d_local_A[i], size * number_of_rows_per_device[i] * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaMallocAsync((void**)&d_local_A_transposed[i], size * number_of_rows_per_device[i] * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
-        err = cudaMemcpyAsync((void*)(d_local_A[i]), h_A + i * (size / number_of_devices) * size, size * number_of_rows_per_device[i] * sizeof(double), cudaMemcpyHostToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);
+        err = cudaMemcpyAsync((void*)(d_local_A[i]), h_A + i * (size / (size_t)number_of_devices) * size, size * number_of_rows_per_device[i] * sizeof(double), cudaMemcpyHostToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);
         // err = cudaMemcpyAsync((void*)d_local_A_transposed[i], (void*)d_local_A[i], size * number_of_rows_per_device[i] * sizeof(double), cudaMemcpyDeviceToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);
         transpose<<<dim3(size / TILE_DIM + 1, size / TILE_DIM + 1), dim3(TILE_DIM, TILE_DIM), 0, s[i]>>>((double*)d_local_A_transposed[i], d_local_A[i], number_of_rows_per_device[i], size);
 
@@ -137,8 +152,10 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
 
     unsigned long long int start, end;
 
-    start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    err = cudaSetDevice(0); cuda_err_check(err, __FILE__, __LINE__);
 
+    start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    
     bb = dot_kernel_launcher(d_b, d_b, size);
     rr = bb;
     for(num_iters = 1; num_iters <= max_iters; num_iters++)
