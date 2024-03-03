@@ -113,8 +113,8 @@ if __name__ == '__main__':
     df = pd.DataFrame(columns=['implementation', 'matrix_size', 'time'])
 
     for size in matrix_size:
-        matrix = f'{args.data_folder}/matrix_{size}.bin'
-        vector = f'{args.data_folder}/vector_{size}.bin'
+        matrix = f'{args.data_folder}/matrix{size}.bin'
+        rhs = f'{args.data_folder}/rhs{size}.bin'
         output = f'output/output_{size}.bin'
         if 'ALL' in args.implementation:
             if 'GPU' in args.implementation:
@@ -123,14 +123,14 @@ if __name__ == '__main__':
                 implementations = implementation_numbers.keys()
             for implementation in implementations:
                 compile(implementation)
-                run(implementation, matrix, vector, output, args.tolerance, args.max_iterations)
-                check_results(args.output_file, args.reference_file, implementation)
+                run(implementation, matrix, rhs, output, args.tolerance, args.max_iterations)
+                check_results(output, args.reference_file, implementation)
                 time = calculate_speedup("output/time.txt", reference_time)      
-                df = df.append({'implementation': implementation, 'matrix_size': size, 'time': time}, ignore_index=True)
+                df = pd.concat([df, pd.DataFrame([[implementation, size, time]], columns=['implementation', 'matrix_size', 'time'])])
         else:
             compile(args.implementation)
-            run(args.implementation, matrix, vector, output, args.tolerance, args.max_iterations)
-            check_results(args.output_file, args.reference_file, args.implementation)
+            run(args.implementation, matrix, rhs, output, args.tolerance, args.max_iterations)
+            check_results(output, args.reference_file, args.implementation)
             calculate_speedup("output/time.txt", reference_time)
     
     df.to_csv('output/times.csv', index=False)
