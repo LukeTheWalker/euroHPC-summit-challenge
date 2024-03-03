@@ -11,7 +11,7 @@
 #define TILE_DIM 32
 #define BLOCK_ROWS 8
 
-extern size_t myRank, nRanks;
+extern int myRank, nRanks;
 extern ncclComm_t * comms;
 
 #define SHMEM 800

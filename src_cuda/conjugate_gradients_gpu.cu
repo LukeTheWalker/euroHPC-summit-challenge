@@ -216,7 +216,6 @@ void par_conjugate_gradients(const double * h_A, const double * h_b, double * h_
 
     double * y_partial;
 
-    size_t rowsperblock = 1024;
     size_t sharedMemSize = SHMEM;
     size_t threadsPerRow = ((size * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
 
