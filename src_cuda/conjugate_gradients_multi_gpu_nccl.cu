@@ -14,6 +14,7 @@
 extern size_t myRank, nRanks;
 extern ncclComm_t * comms;
 
+#define SHMEM 800
 
 namespace luca {
 
@@ -114,6 +115,11 @@ void par_conjugate_gradients_multi_gpu_nccl(const double * h_A, const double * h
         err = cudaMemcpyAsync((void*)(d_local_A[i]), h_A + offset, size * number_of_rows_per_device[i] * sizeof(double), cudaMemcpyHostToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);
 
         transpose<<<dim3(size / TILE_DIM + 1, size / TILE_DIM + 1), dim3(TILE_DIM, TILE_DIM), 0, s[i]>>>((double*)d_local_A_transposed[i], d_local_A[i], number_of_rows_per_device[i], size);
+
+        size_t rowsperblock = 1024;
+        size_t sharedMemSize = SHMEM;
+        size_t threadsPerRow = ((size * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
+
 
         err = cudaMallocAsync((void**)&y_partial_local[i], number_of_rows_per_device[i] * threadsPerRow * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaMallocAsync((void**)&y_local[i], number_of_rows_per_device[i] * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
