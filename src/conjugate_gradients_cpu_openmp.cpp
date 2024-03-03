@@ -1,109 +1,114 @@
-#include <conjugate_gradients_cpu_openmp.hpp>
-
-#include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <cmath>
+#include <chrono>
 #include <omp.h>
+#include <iostream>
+#include <bits/stdc++.h>
 
-double dot_result = 0.0;
-
-void omp_dot(const double * x, const double * y, size_t size)
-{   
-    #pragma omp single 
-    {dot_result = 0.0;}
-    #pragma omp barrier
-    #pragma omp for reduction(+:dot_result)
-    for(size_t i = 0; i < size; i++)
-    {
-        dot_result += x[i] * y[i];
+double dot (const double * x, const double * y, size_t size) {
+    double result = 0.0;
+    #pragma omp simd reduction(+:result)
+    for(size_t i = 0; i < size; i++) {
+        result += x[i] * y[i];
     }
-}
-
-void omp_axpby(double alpha, const double * x, double beta, double * y, size_t size)
-{
-    #pragma omp for
-    for(size_t i = 0; i < size; i++)
-    {
-        y[i] = alpha * x[i] + beta * y[i];
-    }
+    return result;
 }
 
 
-
-void omp_gemv(double alpha, const double * A, const double * x, double beta, double * y, size_t num_rows, size_t num_cols)
-{
-    #pragma omp for
-    for(size_t r = 0; r < num_rows; r++)
-    {
-        double y_val = 0.0;
-        for(size_t c = 0; c < num_cols; c++)
-        {
-            y_val += alpha * A[r * num_cols + c] * x[c];
-        }
-        y[r] = beta * y[r] + y_val;
-    }
-}
-
-
-
-void conjugate_gradients_cpu_openmp(const double * A, const double * b, double * x, size_t size, int max_iters, double rel_error)
-{
+void conjugate_gradients_cpu_openmp(const double *  A, const double * b, double * x, size_t size, int max_iters, double rel_error) {
     double alpha, beta, bb, rr, rr_new;
-    double * r = new double[size];
-    double * p = new double[size];
-    double * Ap = new double[size];
+    auto * r = new double[size];
+    auto * p = new double[size];
+    auto * Ap = new double[size];
     int num_iters;
 
-    for(size_t i = 0; i < size; i++)
-    {
+    for(size_t i = 0; i < size; i++) {
         x[i] = 0.0;
         r[i] = b[i];
         p[i] = b[i];
     }
 
-    bool converged = false;
-
-    #pragma omp parallel
+    bb = dot(b, b, size);
+    rr = bb;
+    double dot_result = 0.0;
+    rr_new = 0.0;
+    int total_iterations = 0;
+    auto start = std::chrono::high_resolution_clock::now();
+    #pragma omp parallel default(none) shared(max_iters, size, rel_error, A, p, Ap, x, r, dot_result, rr_new, total_iterations) firstprivate(alpha, beta, rr, bb, num_iters)
     {
-        omp_dot(b, b, size);
-        #pragma omp single
-        {
-            bb = dot_result;
-            rr = bb;
-        }
-        // for(num_iters = 1; num_iters <= max_iters && !converged; num_iters++)
-        while (num_iters <= max_iters && !converged)
-        {
-            omp_gemv(1.0, A, p, 0.0, Ap, size, size);
-            omp_dot(p, Ap, size);
-            #pragma omp single
-            {alpha = rr / dot_result;}
-            omp_axpby(alpha, p, 1.0, x, size);
-            omp_axpby(-alpha, Ap, 1.0, r, size);
-            omp_dot(r, r, size);
+        for (num_iters = 1; num_iters <= max_iters; num_iters++) {
+
+            #pragma omp for simd nowait
+            for (size_t i = 0; i < size; i += 1) {
+                Ap[i] = 0.0;
+                #pragma omp simd
+                for (size_t j = 0; j < size; j++) {
+                    Ap[i] += A[i * size + j] * p[j];
+                }
+            }
+
+
+
             #pragma omp single
             {
-                rr_new = dot_result;
-                beta = rr_new / rr;
-                rr = rr_new;
-                if(std::sqrt(rr / bb) < rel_error) { converged = true; }
-                num_iters++;
+                dot_result = 0.0;
+                rr_new = 0.0;
             }
-            omp_axpby(1.0, r, beta, p, size);
+
+
+            #pragma omp for simd reduction(+:dot_result)
+            for (size_t i = 0; i < size; i++) {
+                dot_result += p[i] * Ap[i];
+            }
+            alpha = rr / dot_result;
+
+
+            #pragma omp for simd nowait
+            for(size_t i = 0; i < size; i++) {
+                x[i] = alpha * p[i] + x[i];
+            }
+
+
+            #pragma omp for simd nowait
+            for(size_t i = 0; i < size; i++) {
+                r[i] = -alpha * Ap[i] + r[i];
+            }
+
+
+            #pragma omp for simd reduction(+:rr_new)
+            for (size_t i = 0; i < size; i++) {
+                rr_new += r[i] * r[i];
+            }
+
+
+            beta = rr_new / rr;
+            rr = rr_new;
+            if (std::sqrt(rr / bb) < rel_error) {
+                #pragma omp single
+                {
+                    total_iterations = num_iters;
+                }
+                break; }
+
+            #pragma omp for simd
+            for(size_t i = 0; i < size; i++) {
+                p[i] =  r[i] + beta * p[i];
+            }
         }
     }
+    auto stop = std::chrono::high_resolution_clock::now();
+    printf("Net OpenMP time: %fms\n", std::chrono::duration<double, std::milli>(stop - start).count());
 
     delete[] r;
     delete[] p;
     delete[] Ap;
-
-    if(num_iters <= max_iters)
+    if(total_iterations <= max_iters)
     {
-        printf("Converged in %d iterations, relative error is %e\n", num_iters, std::sqrt(rr / bb));
+        printf("Converged in %d iterations, relative error is %e\n", total_iterations, std::sqrt(rr_new / bb));
     }
     else
     {
-        printf("Did not converge in %d iterations, relative error is %e\n", max_iters, std::sqrt(rr / bb));
+        printf("Did not converge in %d iterations, relative error is %e\n", total_iterations, std::sqrt(rr_new / bb));
     }
 }
-
-
