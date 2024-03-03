@@ -20,12 +20,12 @@ namespace luca {
 
 void gemv_multi_gpu_nccl_tiled_kernel_launcher(const double ** local_A, const double * x, double * y, double ** y_partial_local, double ** y_local, double ** x_local, size_t * num_rows_per_device, size_t * num_rows_per_node, size_t num_cols, cudaStream_t * s)
 {
-    size_t number_of_devices; cudaError_t err; ncclResult_t nccl_err;
+    int number_of_devices; cudaError_t err; ncclResult_t nccl_err;
 
     err = cudaGetDeviceCount((int*)&number_of_devices); cuda_err_check(err, __FILE__, __LINE__);
 
-    int threadsPerRow = 10;
-    size_t sharedMemSize = num_cols / threadsPerRow * sizeof(double);
+    size_t sharedMemSize = SHMEM;
+    size_t threadsPerRow = ((num_cols * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
 
     for (int i = 0; i < number_of_devices; i++)
     {
@@ -116,10 +116,8 @@ void par_conjugate_gradients_multi_gpu_nccl(const double * h_A, const double * h
 
         transpose<<<dim3(size / TILE_DIM + 1, size / TILE_DIM + 1), dim3(TILE_DIM, TILE_DIM), 0, s[i]>>>((double*)d_local_A_transposed[i], d_local_A[i], number_of_rows_per_device[i], size);
 
-        size_t rowsperblock = 1024;
         size_t sharedMemSize = SHMEM;
         size_t threadsPerRow = ((size * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
-
 
         err = cudaMallocAsync((void**)&y_partial_local[i], number_of_rows_per_device[i] * threadsPerRow * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaMallocAsync((void**)&y_local[i], number_of_rows_per_device[i] * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
