@@ -5,6 +5,8 @@
 #include <utils.cuh>
 #include <chrono>
 
+#define SHMEM 800
+
 namespace luca {
 
 __global__ void dot_kernel(const double * x, const double * y, double * result, size_t size)
@@ -98,8 +100,8 @@ __global__ void gemv_kernel(double alpha, const double * A, const double * x, do
 
 void gemv_kernel_launcher(double alpha, const double * A, const double * x, double beta, double * y, size_t num_rows, size_t num_cols)
 {
-    int block_size = 256;
-    int grid_size = (num_rows + block_size - 1) / block_size;
+    size_t block_size = 256;
+    size_t grid_size = (num_rows + block_size - 1) / block_size;
 
     gemv_kernel<<<grid_size, block_size>>>(alpha, A, x, beta, y, num_rows, num_cols);
 
@@ -153,8 +155,10 @@ __global__ void reduce_rows(double * y_partial, double * y, size_t m, size_t p)
 void gemv_tiled_kernel_launcher(const double * A, const double * x, double * y, double * y_partial, size_t num_rows, size_t num_cols)
 {
     cudaError_t err;
-    int threadsPerRow = 10;
-    int rowsperblock = 1024;
+    // int threadsPerRow = 10;
+    size_t rowsperblock = 1024;
+    size_t sharedMemSize = SHMEM;
+    size_t threadsPerRow = ((num_cols * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
     // Define the size of the grid and blocks
     dim3 blockDim(1, rowsperblock);
     dim3 gridDim(threadsPerRow, (num_rows + rowsperblock - 1) / rowsperblock);
@@ -212,8 +216,9 @@ void par_conjugate_gradients(const double * h_A, const double * h_b, double * h_
 
     double * y_partial;
 
-    size_t sharedMemSize = 48000;
-    size_t threadsPerRow = (size * sizeof(double)) / sharedMemSize;
+    size_t rowsperblock = 1024;
+    size_t sharedMemSize = SHMEM;
+    size_t threadsPerRow = ((size * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
 
     err = cudaMalloc((void**)&y_partial, size * threadsPerRow * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
 
