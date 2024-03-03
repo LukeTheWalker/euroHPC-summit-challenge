@@ -164,7 +164,7 @@ void gemv_tiled_kernel_launcher(const double * A, const double * x, double * y, 
     dim3 gridDim(threadsPerRow, (num_rows + rowsperblock - 1) / rowsperblock);
 
     // Calculate the size of the shared memory
-    size_t sharedMemSize = num_cols / threadsPerRow * sizeof(double);
+    // size_t sharedMemSize = num_cols / threadsPerRow * sizeof(double);
 
     err = cudaMemset(y_partial, 0, num_rows * threadsPerRow * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
 
