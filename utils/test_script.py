@@ -105,7 +105,7 @@ if __name__ == '__main__':
     parser.add_argument('tolerance', help='The tolerance for the solution')
     parser.add_argument('max_iterations', help='The maximum number of iterations to perform')
     parser.add_argument('reference_file', nargs='?', default=None, help='The reference file to compare the output to')
-    parser.add_argument('implementation', choices=['NCCL', 'MGPU', 'CUBLAS', 'TILED', 'ROWS', 'OPENMP', 'SERIAL', 'ALL', 'ALL_GPU'], help='The version of the program to run')
+    parser.add_argument('implementation', choices=['NCCL', 'MGPU', 'CUBLAS', 'TILED', 'ROWS', 'OPENMP', 'SERIAL', 'ALL', 'ALL_GPU', 'ALL_CPU'], help='The version of the program to run')
     
     # Parse the command-line arguments
     args = parser.parse_args()
@@ -119,6 +119,8 @@ if __name__ == '__main__':
         if 'ALL' in args.implementation:
             if 'GPU' in args.implementation:
                 implementations = ['CUBLAS', 'TILED', 'ROWS', 'MGPU', 'NCCL']
+            elif 'CPU' in args.implementation:
+                implementations = ['SERIAL', 'OPENMP']
             else:
                 implementations = implementation_numbers.keys()
             for implementation in implementations:
@@ -126,7 +128,10 @@ if __name__ == '__main__':
                 run(implementation, matrix, rhs, output, args.tolerance, args.max_iterations)
                 check_results(output, args.reference_file, implementation)
                 time = calculate_speedup("output/time.txt", reference_time)      
-                df = pd.concat([df, pd.DataFrame([[implementation, size, time]], columns=['implementation', 'matrix_size', 'time'])])
+                if df.empty:
+                    df = pd.DataFrame([[implementation, size, time]], columns=['implementation', 'matrix_size', 'time'])
+                else :
+                    df = pd.concat([df, pd.DataFrame([[implementation, size, time]], columns=['implementation', 'matrix_size', 'time'])])
         else:
             compile(args.implementation)
             run(args.implementation, matrix, rhs, output, args.tolerance, args.max_iterations)
