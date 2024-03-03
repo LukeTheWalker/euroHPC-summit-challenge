@@ -2,6 +2,7 @@ import argparse
 import subprocess
 import struct
 import os
+import pandas as pd
 
 # reference_time = 43616498; # in milliseconds luca's machine
 reference_time = 58690450; # meluxina
@@ -15,6 +16,16 @@ implementation_numbers = {
     'OPENMP': 4,
     'SERIAL': 5
 }
+
+matrix_size = [
+    100,
+    500, 
+    1000,
+    5000,
+    10000,
+    50000,
+    70000,
+]
 
 def compile(version):
     flags = []
@@ -80,15 +91,17 @@ def calculate_speedup(time_file, reference_time):
 
     speedup = reference_time / time
     print('Speedup: ', speedup)
+    return time
 
 if __name__ == '__main__':
     # Create the argument parser
     parser = argparse.ArgumentParser(description='Compile and run specific CG solver')
 
     # Add the version argument "cuBLAS", "MGPU", "Luca GPU", "Tommy GPU", "CPU (OpenMP)", "CPU (Serial)"
-    parser.add_argument('matrix_file', help='The file containing the matrix to solve')
-    parser.add_argument('vector_file', help='The file containing the vector to solve')
-    parser.add_argument('output_file', help='The file to write the solution to')
+    # parser.add_argument('matrix_file', help='The file containing the matrix to solve')
+    # parser.add_argument('vector_file', help='The file containing the vector to solve')
+    # parser.add_argument('output_file', help='The file to write the solution to')
+    parser.add_argument('data_folder', help='The folder containing the data files')
     parser.add_argument('tolerance', help='The tolerance for the solution')
     parser.add_argument('max_iterations', help='The maximum number of iterations to perform')
     parser.add_argument('reference_file', nargs='?', default=None, help='The reference file to compare the output to')
@@ -97,18 +110,27 @@ if __name__ == '__main__':
     # Parse the command-line arguments
     args = parser.parse_args()
 
-    if 'ALL' in args.implementation:
-        if 'GPU' in args.implementation:
-            implementations = ['CUBLAS', 'TILED', 'ROWS', 'MGPU', 'NCCL']
+    df = pd.DataFrame(columns=['implementation', 'matrix_size', 'time'])
+
+    for size in matrix_size:
+        matrix = f'{args.data_folder}/matrix_{size}.bin'
+        vector = f'{args.data_folder}/vector_{size}.bin'
+        output = f'output/output_{size}.bin'
+        if 'ALL' in args.implementation:
+            if 'GPU' in args.implementation:
+                implementations = ['CUBLAS', 'TILED', 'ROWS', 'MGPU', 'NCCL']
+            else:
+                implementations = implementation_numbers.keys()
+            for implementation in implementations:
+                compile(implementation)
+                run(implementation, matrix, vector, output, args.tolerance, args.max_iterations)
+                check_results(args.output_file, args.reference_file, implementation)
+                time = calculate_speedup("output/time.txt", reference_time)      
+                df = df.append({'implementation': implementation, 'matrix_size': size, 'time': time}, ignore_index=True)
         else:
-            implementations = implementation_numbers.keys()
-        for implementation in implementations:
-            compile(implementation)
-            run(implementation, args.matrix_file, args.vector_file, args.output_file, args.tolerance, args.max_iterations)
-            check_results(args.output_file, args.reference_file, implementation)
-            calculate_speedup("output/time.txt", reference_time)      
-    else:
-        compile(args.implementation)
-        run(args.implementation, args.matrix_file, args.vector_file, args.output_file, args.tolerance, args.max_iterations)
-        check_results(args.output_file, args.reference_file, args.implementation)
-        calculate_speedup("output/time.txt", reference_time)
+            compile(args.implementation)
+            run(args.implementation, matrix, vector, output, args.tolerance, args.max_iterations)
+            check_results(args.output_file, args.reference_file, args.implementation)
+            calculate_speedup("output/time.txt", reference_time)
+    
+    df.to_csv('output/times.csv', index=False)

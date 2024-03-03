@@ -54,9 +54,9 @@ void gemv_multi_gpu_nccl_tiled_kernel_launcher(const double ** local_A, const do
     
     if (myRank == 0){
         size_t progressive_offset = 0;
-        for (size_t r = 0; r < nRanks; r++){
-            for (size_t i = 0; i < number_of_devices; i++){
-                size_t num_to_transfer = (i == number_of_devices - 1) ? num_rows_per_node[r] - i * (num_rows_per_node[r] / number_of_devices) : num_rows_per_node[r] / number_of_devices;
+        for (size_t r = 0; r < (size_t)nRanks; r++){
+            for (size_t i = 0; i < (size_t)number_of_devices; i++){
+                size_t num_to_transfer = (i == (size_t)number_of_devices - 1) ? num_rows_per_node[r] - i * (num_rows_per_node[r] / (size_t)number_of_devices) : num_rows_per_node[r] / (size_t)number_of_devices;
                 nccl_err = ncclRecv(y + progressive_offset, num_to_transfer, ncclDouble, r * number_of_devices + i, comms[0], s[0]); nccl_err_check(nccl_err, __FILE__, __LINE__);
                 progressive_offset += num_to_transfer;
             }
