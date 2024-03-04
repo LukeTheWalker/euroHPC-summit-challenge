@@ -33,6 +33,8 @@ def compile(version):
         flags += ['USE_NCCL=0']
     if version == 'OPENMP' or version == 'SERIAL':
         flags += ['USE_CUDA=0']
+    else:
+        flags += ['USE_CUDA=1']
 
     print(f'----------------- Using {version} -----------------')
 

@@ -17,11 +17,11 @@ double dot (const double * x, const double * y, size_t size) {
 
 
 void conjugate_gradients_cpu_openmp(const double *  A, const double * b, double * x, size_t size, int max_iters, double rel_error) {
-    double alpha, beta, bb, rr, rr_new;
+    double alpha = 0, beta = 0, bb = 0, rr = 0, rr_new = 0;
     auto * r = new double[size];
     auto * p = new double[size];
     auto * Ap = new double[size];
-    int num_iters;
+    int num_iters = 0;
 
     for(size_t i = 0; i < size; i++) {
         x[i] = 0.0;

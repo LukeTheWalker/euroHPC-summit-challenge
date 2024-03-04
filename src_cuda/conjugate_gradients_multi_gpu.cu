@@ -71,29 +71,56 @@ void gemv_multi_gpu_tiled_kernel_launcher(const double ** local_A, const double 
     err = cudaSetDevice(0); cuda_err_check(err, __FILE__, __LINE__);
 }
 
-size_t autotune_gemv_tiled_multi_gpu(const double ** local_A, const double * x, double * y, double ** y_partial_local, double ** y_local, double ** x_local, size_t * num_rows_per_device, size_t num_cols, cudaStream_t * s, void (*kernel_launcher)(const double **, const double *, double *, double **, double **, double **, size_t, size_t, size_t *, size_t, cudaStream_t *))
+size_t autotune_gemv_tiled_multi_gpu(const double ** local_A, double * y, double ** y_partial_local, double ** y_local, double ** x_local, size_t * num_rows_per_device, size_t num_cols, cudaStream_t * s, void (*kernel_launcher)(const double **, const double *, double *, double **, double **, double **, size_t, size_t, size_t *, size_t, cudaStream_t *))
 {
     size_t best_sharedMemSize = 0;
     double best_executionTime = std::numeric_limits<double>::max();
 
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
+    size_t start, end;
 
-    size_t threadsPerRow = 0;
+    cudaError_t err;
 
-    for (size_t sharedMemSize = 800; sharedMemSize < 48000; sharedMemSize += 800)
+    int number_of_devices;
+    err = cudaGetDeviceCount(&number_of_devices); cuda_err_check(err, __FILE__, __LINE__);
+
+    for (int i = 0; i < number_of_devices; i++)
+    {
+        err = cudaMallocAsync((void**)&y_local[i], num_rows_per_device[i] * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
+        err = cudaMallocAsync((void**)&x_local[i], num_cols * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
+    }
+
+    double * x_local_host = (double*)malloc(num_cols * sizeof(double));
+
+    // fill with random values
+    for (size_t i = 0; i < num_cols; i++)
+    {
+        x_local_host[i] = (((double)rand() / RAND_MAX) - 0.5) * 20;
+    }
+
+    double * d_x;
+
+    err = cudaMalloc((void**)&d_x, num_cols * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
+    err = cudaMemcpy(d_x, x_local_host, num_cols * sizeof(double), cudaMemcpyHostToDevice); cuda_err_check(err, __FILE__, __LINE__);
+    
+    for (size_t sharedMemSize = 400; sharedMemSize < 12000; sharedMemSize += 400)
     {
         size_t threadsPerRow = ((num_cols * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
 
-        cudaEventRecord(start);
+        for (int i = 0; i < number_of_devices; i++)
+            err = cudaMallocAsync((void**)&y_partial_local[i], num_rows_per_device[i] * threadsPerRow * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
+        
+
+        start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
         // Launch the kernel
-        kernel_launcher(local_A, x, y, y_partial_local, y_local, x_local, sharedMemSize, threadsPerRow, num_rows_per_device, num_cols, s);
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        float milliseconds = 0;
-        cudaEventElapsedTime(&milliseconds, start, stop);
-        double executionTime = milliseconds;
+        kernel_launcher(local_A, d_x, y, y_partial_local, y_local, x_local, sharedMemSize, threadsPerRow, num_rows_per_device, num_cols, s);
+
+        end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+        for (int i = 0; i < number_of_devices; i++)
+            err = cudaFreeAsync((void*)y_partial_local[i], s[i]); cuda_err_check(err, __FILE__, __LINE__);;
+
+        double executionTime = end - start;
 
         // Check if this configuration is the best so far
         if (executionTime < best_executionTime)
@@ -103,8 +130,13 @@ size_t autotune_gemv_tiled_multi_gpu(const double ** local_A, const double * x, 
         }
     }
 
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    for (int i = 0; i < number_of_devices; i++)
+    {
+        err = cudaFreeAsync((void*)y_local[i], s[i]); cuda_err_check(err, __FILE__, __LINE__);
+        err = cudaFreeAsync((void*)x_local[i], s[i]); cuda_err_check(err, __FILE__, __LINE__);
+    }
+
+    err = cudaFree(d_x); cuda_err_check(err, __FILE__, __LINE__);
 
     printf("Best shared memory size: %lu\n", best_sharedMemSize);
 
@@ -151,17 +183,7 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
         // err = cudaMemcpyAsync((void*)d_local_A_transposed[i], (void*)d_local_A[i], size * number_of_rows_per_device[i] * sizeof(double), cudaMemcpyDeviceToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);
         transpose<<<dim3(size / TILE_DIM + 1, size / TILE_DIM + 1), dim3(TILE_DIM, TILE_DIM), 0, s[i]>>>((double*)d_local_A_transposed[i], d_local_A[i], number_of_rows_per_device[i], size);
     }
-    
-    size_t sharedMemSize = autotune_gemv_tiled_multi_gpu(d_local_A_transposed, d_p, d_Ap, y_partial_local, y_local, x_local,  number_of_rows_per_device, size, s, gemv_multi_gpu_tiled_kernel_launcher);
-    size_t threadsPerRow = ((size * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
-
-    for (int i = 0; i < number_of_devices; i++)
-    {
-        err = cudaMallocAsync((void**)&y_partial_local[i], number_of_rows_per_device[i] * threadsPerRow * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
-        err = cudaMallocAsync((void**)&y_local[i], number_of_rows_per_device[i] * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
-        err = cudaMallocAsync((void**)&x_local[i], size * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
-    }
-    
+        
     err = cudaSetDevice(0); cuda_err_check(err, __FILE__, __LINE__);
 
     // err = cudaMalloc((void**)&d_A, size * size * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
@@ -178,6 +200,16 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
     err = cudaMemset(d_x, 0, size * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaMemcpy(d_r, d_b, size * sizeof(double), cudaMemcpyDeviceToDevice); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaMemcpy(d_p, d_b, size * sizeof(double), cudaMemcpyDeviceToDevice); cuda_err_check(err, __FILE__, __LINE__);
+
+    size_t sharedMemSize = autotune_gemv_tiled_multi_gpu(d_local_A_transposed, d_Ap, y_partial_local, y_local, x_local,  number_of_rows_per_device, size, s, gemv_multi_gpu_tiled_kernel_launcher);
+    size_t threadsPerRow = ((size * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
+
+    for (int i = 0; i < number_of_devices; i++)
+    {
+        err = cudaMallocAsync((void**)&y_partial_local[i], number_of_rows_per_device[i] * threadsPerRow * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
+        err = cudaMallocAsync((void**)&y_local[i], number_of_rows_per_device[i] * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
+        err = cudaMallocAsync((void**)&x_local[i], size * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
+    }
 
     // sync all streams
     for(int i = 0; i < number_of_devices; i++) { err = cudaStreamSynchronize(s[i]); cuda_err_check(err, __FILE__, __LINE__); err = cudaFreeAsync((void*)d_local_A[i], s[i]); cuda_err_check(err, __FILE__, __LINE__);}

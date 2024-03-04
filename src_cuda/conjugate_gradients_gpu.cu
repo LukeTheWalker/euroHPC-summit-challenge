@@ -179,40 +179,56 @@ void gemv_tiled_kernel_launcher(const double * A, const double * x, double * y, 
 
 }
 
-size_t autotune_gemv_tiled(const double *A, const double *x, double * y, double * y_partial, size_t m, size_t n, void (*kernel_launcher)(const double *, const double *, double *, double *, size_t, size_t, size_t, size_t))
+size_t autotune_gemv_tiled(const double *d_A, double * d_y, size_t m, size_t n, void (*kernel_launcher)(const double *, const double *, double *, double *, size_t, size_t, size_t, size_t))
 {
     size_t best_sharedMemSize = 0;
     double best_executionTime = std::numeric_limits<double>::max();
+    double executionTime;
 
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
+    size_t start, end;
 
-    size_t threadsPerRow = 0;
+    cudaError_t err;
 
-    for (size_t sharedMemSize = 800; sharedMemSize < 48000; sharedMemSize += 800)
+    double * y_partial;
+    double * d_x;
+
+    err = cudaMalloc((void**)&d_x, m * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
+
+    double * x_local_host = (double*)malloc(m * sizeof(double));
+
+    // fill with random values
+    for (size_t i = 0; i < m; i++)
+    {
+        x_local_host[i] = (((double)rand() / RAND_MAX) - 0.5) * 20;
+    }
+
+    err = cudaMemcpy(d_x, x_local_host, m * sizeof(double), cudaMemcpyHostToDevice); cuda_err_check(err, __FILE__, __LINE__);
+
+    for (size_t sharedMemSize = 400; sharedMemSize < 12000; sharedMemSize += 400)
     {
         size_t threadsPerRow = ((m * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
 
-        cudaEventRecord(start);
-        // Launch the kernel
-        kernel_launcher(A, x, y, y_partial, sharedMemSize, threadsPerRow, m, n);
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        float milliseconds = 0;
-        cudaEventElapsedTime(&milliseconds, start, stop);
-        double executionTime = milliseconds;
+        err = cudaMalloc((void**)&y_partial, m * threadsPerRow * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
 
+        start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+        // Launch the kernel
+        kernel_launcher(d_A, d_x, d_y, y_partial, sharedMemSize, threadsPerRow, m, n);
+
+        end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        executionTime = end - start;
+    
         // Check if this configuration is the best so far
         if (executionTime < best_executionTime)
         {
             best_sharedMemSize = sharedMemSize;
             best_executionTime = executionTime;
         }
+
+        err = cudaFree(y_partial); cuda_err_check(err, __FILE__, __LINE__);
     }
 
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    err = cudaFree(d_x); cuda_err_check(err, __FILE__, __LINE__);
 
     printf("Best shared memory size: %lu\n", best_sharedMemSize);
 
@@ -231,6 +247,8 @@ void transfer_to_host(const double * d_x, double * h_x, size_t size)
 
 void par_conjugate_gradients(const double * h_A, const double * h_b, double * h_x, size_t size, int max_iters, double rel_error)
 {
+    fprintf(stderr, "Running parallel CG\n");
+
     const double * d_A, * d_b;
     int num_iters;
 
@@ -254,10 +272,10 @@ void par_conjugate_gradients(const double * h_A, const double * h_b, double * h_
     err = cudaMemcpy(d_r, d_b, size * sizeof(double), cudaMemcpyDeviceToDevice); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaMemcpy(d_p, d_b, size * sizeof(double), cudaMemcpyDeviceToDevice); cuda_err_check(err, __FILE__, __LINE__);
 
-    double * y_partial;
+    double * y_partial = NULL;
 
     // size_t sharedMemSize = SHMEM;
-    size_t sharedMemSize = autotune_gemv_tiled(d_A, d_p, d_Ap, y_partial, size, size, gemv_tiled_kernel_launcher);
+    size_t sharedMemSize = autotune_gemv_tiled(d_A, d_Ap, size, size, gemv_tiled_kernel_launcher);
     size_t threadsPerRow = ((size * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
 
     err = cudaMalloc((void**)&y_partial, size * threadsPerRow * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
