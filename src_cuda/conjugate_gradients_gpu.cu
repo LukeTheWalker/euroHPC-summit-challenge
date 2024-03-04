@@ -247,8 +247,6 @@ void transfer_to_host(const double * d_x, double * h_x, size_t size)
 
 void par_conjugate_gradients(const double * h_A, const double * h_b, double * h_x, size_t size, int max_iters, double rel_error)
 {
-    fprintf(stderr, "Running parallel CG\n");
-
     const double * d_A, * d_b;
     int num_iters;
 

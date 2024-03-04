@@ -99,9 +99,6 @@ void par_conjugate_gradients_multi_gpu_nccl(const double * h_A, const double * h
 
     omp_set_num_threads(number_of_devices);
 
-    size_t sharedMemSize = SHMEM;
-    size_t threadsPerRow = ((size * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
-
     #pragma omp parallel for
     for(int i = 0; i < number_of_devices; i++)
     {
@@ -115,11 +112,6 @@ void par_conjugate_gradients_multi_gpu_nccl(const double * h_A, const double * h
         err = cudaMemcpyAsync((void*)(d_local_A[i]), h_A + offset, size * number_of_rows_per_device[i] * sizeof(double), cudaMemcpyHostToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);
 
         transpose<<<dim3(size / TILE_DIM + 1, size / TILE_DIM + 1), dim3(TILE_DIM, TILE_DIM), 0, s[i]>>>((double*)d_local_A_transposed[i], d_local_A[i], number_of_rows_per_device[i], size);
-
-        err = cudaMallocAsync((void**)&y_partial_local[i], number_of_rows_per_device[i] * threadsPerRow * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
-        err = cudaMallocAsync((void**)&y_local[i], number_of_rows_per_device[i] * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
-        err = cudaMallocAsync((void**)&x_local[i], size * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
-
     }
 
     const double * d_b;
@@ -127,6 +119,9 @@ void par_conjugate_gradients_multi_gpu_nccl(const double * h_A, const double * h
 
     double alpha = 0, beta = 0, rr = 0, rr_new = 0, bb = 0;
     double * d_r, * d_p, * d_Ap, * d_x;
+
+    size_t sharedMemSize;
+    size_t threadsPerRow;
 
     if (myRank == 0)
     {
@@ -144,6 +139,19 @@ void par_conjugate_gradients_multi_gpu_nccl(const double * h_A, const double * h
         err = cudaMemset(d_x, 0, size * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaMemcpy(d_r, d_b, size * sizeof(double), cudaMemcpyDeviceToDevice); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaMemcpy(d_p, d_b, size * sizeof(double), cudaMemcpyDeviceToDevice); cuda_err_check(err, __FILE__, __LINE__);
+    
+        sharedMemSize = autotune_gemv_tiled_multi_gpu(d_local_A_transposed, d_Ap, y_partial_local, y_local, x_local,  number_of_rows_per_device, size, s, gemv_multi_gpu_tiled_kernel_launcher);
+    }
+
+    mpi_err_check(MPI_Bcast(&sharedMemSize, 1, MPI_UNSIGNED_LONG, 0, MPI_COMM_WORLD), __FILE__, __LINE__);
+    
+    threadsPerRow = ((size * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
+
+    for (int i = 0; i < number_of_devices; i++)
+    {
+        err = cudaMallocAsync((void**)&y_partial_local[i], number_of_rows_per_device[i] * threadsPerRow * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
+        err = cudaMallocAsync((void**)&y_local[i], number_of_rows_per_device[i] * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
+        err = cudaMallocAsync((void**)&x_local[i], size * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
     }
 
     if (myRank == 0)
