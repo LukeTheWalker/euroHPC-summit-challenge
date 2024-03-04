@@ -34,16 +34,14 @@ __global__ void transpose(double *odata, const double *idata, size_t nrows, size
     }       
 }
 
-void gemv_multi_gpu_tiled_kernel_launcher(const double ** local_A, const double * x, double * y, double ** y_partial_local, double ** y_local, double ** x_local, size_t * num_rows_per_device, size_t num_cols, cudaStream_t * s)
+void gemv_multi_gpu_tiled_kernel_launcher(const double ** local_A, const double * x, double * y, double ** y_partial_local, double ** y_local, double ** x_local, size_t sharedMemSize, size_t threadsPerRow, size_t * num_rows_per_device, size_t num_cols, cudaStream_t * s)
 {
-    int number_of_devices; cudaError_t err; /*ncclResult_t nccl_err;*/
+    int number_of_devices; cudaError_t err;
 
     err = cudaGetDeviceCount(&number_of_devices); cuda_err_check(err, __FILE__, __LINE__);
 
     // size_t threadsPerRow = 10;
     // size_t sharedMemSize = num_cols / threadsPerRow * sizeof(double);
-    size_t sharedMemSize = SHMEM;
-    size_t threadsPerRow = ((num_cols * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
 
     for (int i = 0; i < number_of_devices; i++)
     {
@@ -53,11 +51,6 @@ void gemv_multi_gpu_tiled_kernel_launcher(const double ** local_A, const double 
         // Define the size of the grid and blocks
         dim3 blockDim(1, rowsperblock);
         dim3 gridDim(threadsPerRow, (num_rows_per_device[i] + rowsperblock - 1) / rowsperblock);
-
-        // fprintf(stderr, "Device %d: %lu rows, %lu cols\n", i, num_rows_per_device[i], num_cols);
-        // fprintf(stderr, "Device %d: blockDim(%d, %d), gridDim(%d, %d), sharedMemSize(%lu)\n", i, blockDim.x, blockDim.y, gridDim.x, gridDim.y, sharedMemSize);
-
-        // fprintf(stderr, "Device %d: %lu threadsPerRow, mem_allcoation for y_partial_local %lu, mem_allcoation for y_local %lu, mem_allcoation for x_local %lu\n", i, threadsPerRow, num_rows_per_device[i] * threadsPerRow * sizeof(double), num_rows_per_device[i] * sizeof(double), num_cols * sizeof(double));
 
         err = cudaMemsetAsync(y_partial_local[i], 0, num_rows_per_device[i] * threadsPerRow * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaMemcpyAsync(x_local[i], x, num_cols * sizeof(double), cudaMemcpyDeviceToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);
@@ -111,7 +104,6 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
     size_t sharedMemSize = SHMEM;
     size_t threadsPerRow = ((size * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
 
-    fprintf(stderr, "SHMEM: %lu, threadsPerRow: %lu\n", sharedMemSize, threadsPerRow);
 
     #pragma omp parallel for
     for(size_t i = 0; i < (size_t)number_of_devices; i++)
@@ -162,7 +154,7 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
     {
         // err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
         // gemv(1.0, A, p, 0.0, Ap, size, size);
-        gemv_multi_gpu_tiled_kernel_launcher(d_local_A_transposed, d_p, d_Ap, y_partial_local, y_local, x_local, number_of_rows_per_device, size, s);
+        gemv_multi_gpu_tiled_kernel_launcher(d_local_A_transposed, d_p, d_Ap, y_partial_local, y_local, x_local, sharedMemSize, threadsPerRow, number_of_rows_per_device, size, s);
         // gemv_kernel_launcher(1.0, d_A, d_p, 0.0, d_Ap, size, size);
         // alpha = rr / dot(p, Ap, size);
         alpha = rr / dot_kernel_launcher(d_p, d_Ap, size);

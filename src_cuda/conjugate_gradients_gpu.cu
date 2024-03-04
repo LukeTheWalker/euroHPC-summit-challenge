@@ -152,13 +152,11 @@ __global__ void reduce_rows(double * y_partial, double * y, size_t m, size_t p)
     y[global_id_x] = sum;
 }
 
-void gemv_tiled_kernel_launcher(const double * A, const double * x, double * y, double * y_partial, size_t num_rows, size_t num_cols)
+void gemv_tiled_kernel_launcher(const double * A, const double * x, double * y, double * y_partial, size_t sharedMemSize, size_t threadsPerRow, size_t num_rows, size_t num_cols)
 {
     cudaError_t err;
     // int threadsPerRow = 10;
     size_t rowsperblock = 1024;
-    size_t sharedMemSize = SHMEM;
-    size_t threadsPerRow = ((num_cols * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
     // Define the size of the grid and blocks
     dim3 blockDim(1, rowsperblock);
     dim3 gridDim(threadsPerRow, (num_rows + rowsperblock - 1) / rowsperblock);
@@ -230,7 +228,7 @@ void par_conjugate_gradients(const double * h_A, const double * h_b, double * h_
     for(num_iters = 1; num_iters <= max_iters; num_iters++)
     {
         // gemv(1.0, A, p, 0.0, Ap, size, size);
-        gemv_tiled_kernel_launcher(d_A, d_p, d_Ap, y_partial, size, size);
+        gemv_tiled_kernel_launcher(d_A, d_p, d_Ap, y_partial, sharedMemSize, threadsPerRow, size, size);
         // gemv_kernel_launcher(1.0, d_A, d_p, 0.0, d_Ap, size, size);
         // alpha = rr / dot(p, Ap, size);
         alpha = rr / dot_kernel_launcher(d_p, d_Ap, size);
