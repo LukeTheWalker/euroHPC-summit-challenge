@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <utils.cuh>
 #include <chrono>
+#include <functional>
 
 #define SHMEM 800
 
@@ -178,6 +179,47 @@ void gemv_tiled_kernel_launcher(const double * A, const double * x, double * y, 
 
 }
 
+size_t autotune_gemv_tiled(const double *A, const double *x, double * y, double * y_partial, size_t m, size_t n, void (*kernel_launcher)(const double *, const double *, double *, double *, size_t, size_t, size_t, size_t))
+{
+    size_t best_sharedMemSize = 0;
+    double best_executionTime = std::numeric_limits<double>::max();
+
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    size_t threadsPerRow = 0;
+
+    for (size_t sharedMemSize = 800; sharedMemSize < 48000; sharedMemSize += 800)
+    {
+        size_t threadsPerRow = ((m * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
+
+        cudaEventRecord(start);
+        // Launch the kernel
+        kernel_launcher(A, x, y, y_partial, sharedMemSize, threadsPerRow, m, n);
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+        float milliseconds = 0;
+        cudaEventElapsedTime(&milliseconds, start, stop);
+        double executionTime = milliseconds;
+
+        // Check if this configuration is the best so far
+        if (executionTime < best_executionTime)
+        {
+            best_sharedMemSize = sharedMemSize;
+            best_executionTime = executionTime;
+        }
+    }
+
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+
+    printf("Best shared memory size: %lu\n", best_sharedMemSize);
+
+    return best_sharedMemSize;
+}
+
+
 
 void transfer_to_host(const double * d_x, double * h_x, size_t size)
 {
@@ -214,7 +256,8 @@ void par_conjugate_gradients(const double * h_A, const double * h_b, double * h_
 
     double * y_partial;
 
-    size_t sharedMemSize = SHMEM;
+    // size_t sharedMemSize = SHMEM;
+    size_t sharedMemSize = autotune_gemv_tiled(d_A, d_p, d_Ap, y_partial, size, size, gemv_tiled_kernel_launcher);
     size_t threadsPerRow = ((size * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
 
     err = cudaMalloc((void**)&y_partial, size * threadsPerRow * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);

@@ -71,6 +71,45 @@ void gemv_multi_gpu_tiled_kernel_launcher(const double ** local_A, const double 
     err = cudaSetDevice(0); cuda_err_check(err, __FILE__, __LINE__);
 }
 
+size_t autotune_gemv_tiled_multi_gpu(const double ** local_A, const double * x, double * y, double ** y_partial_local, double ** y_local, double ** x_local, size_t * num_rows_per_device, size_t num_cols, cudaStream_t * s, void (*kernel_launcher)(const double **, const double *, double *, double **, double **, double **, size_t, size_t, size_t *, size_t, cudaStream_t *))
+{
+    size_t best_sharedMemSize = 0;
+    double best_executionTime = std::numeric_limits<double>::max();
+
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    size_t threadsPerRow = 0;
+
+    for (size_t sharedMemSize = 800; sharedMemSize < 48000; sharedMemSize += 800)
+    {
+        size_t threadsPerRow = ((num_cols * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
+
+        cudaEventRecord(start);
+        // Launch the kernel
+        kernel_launcher(local_A, x, y, y_partial_local, y_local, x_local, sharedMemSize, threadsPerRow, num_rows_per_device, num_cols, s);
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+        float milliseconds = 0;
+        cudaEventElapsedTime(&milliseconds, start, stop);
+        double executionTime = milliseconds;
+
+        // Check if this configuration is the best so far
+        if (executionTime < best_executionTime)
+        {
+            best_sharedMemSize = sharedMemSize;
+            best_executionTime = executionTime;
+        }
+    }
+
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+
+    printf("Best shared memory size: %lu\n", best_sharedMemSize);
+
+    return best_sharedMemSize;
+}
 
 
 void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, double * h_x, size_t size, int max_iters, double rel_error)
@@ -100,11 +139,6 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
 
     omp_set_num_threads(number_of_devices);
 
-
-    size_t sharedMemSize = SHMEM;
-    size_t threadsPerRow = ((size * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
-
-
     #pragma omp parallel for
     for(size_t i = 0; i < (size_t)number_of_devices; i++)
     {   
@@ -116,7 +150,13 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
         err = cudaMemcpyAsync((void*)(d_local_A[i]), h_A + i * (size / (size_t)number_of_devices) * size, size * number_of_rows_per_device[i] * sizeof(double), cudaMemcpyHostToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);
         // err = cudaMemcpyAsync((void*)d_local_A_transposed[i], (void*)d_local_A[i], size * number_of_rows_per_device[i] * sizeof(double), cudaMemcpyDeviceToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);
         transpose<<<dim3(size / TILE_DIM + 1, size / TILE_DIM + 1), dim3(TILE_DIM, TILE_DIM), 0, s[i]>>>((double*)d_local_A_transposed[i], d_local_A[i], number_of_rows_per_device[i], size);
+    }
+    
+    size_t sharedMemSize = autotune_gemv_tiled_multi_gpu(d_local_A_transposed, d_p, d_Ap, y_partial_local, y_local, x_local,  number_of_rows_per_device, size, s, gemv_multi_gpu_tiled_kernel_launcher);
+    size_t threadsPerRow = ((size * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
 
+    for (int i = 0; i < number_of_devices; i++)
+    {
         err = cudaMallocAsync((void**)&y_partial_local[i], number_of_rows_per_device[i] * threadsPerRow * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaMallocAsync((void**)&y_local[i], number_of_rows_per_device[i] * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaMallocAsync((void**)&x_local[i], size * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
