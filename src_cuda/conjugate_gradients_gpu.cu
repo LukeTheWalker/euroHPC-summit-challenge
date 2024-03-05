@@ -146,9 +146,9 @@ __global__ void reduce_rows(double * y_partial, double * y, size_t m, size_t p)
     size_t global_id_x = (size_t)blockIdx.x * (size_t)blockDim.x + (size_t)threadIdx.x;
     if (global_id_x >= m) return;
     double sum = 0;
-    for (size_t k = 0; k < p; k++)
+    for (size_t k = global_id_x; k < p * m; k += m)
     {
-        sum += y_partial[global_id_x + m * k];
+        sum += y_partial[k];
     }
     y[global_id_x] = sum;
 }
@@ -173,7 +173,10 @@ void gemv_tiled_kernel_launcher(const double * A, const double * x, double * y, 
     err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
 
     // Reduce the rows
-    reduce_rows<<<(num_rows + threadsPerRow - 1) / threadsPerRow, threadsPerRow>>>(y_partial, y, num_rows, threadsPerRow);
+    size_t block_dim_reduce = 256;
+    size_t grid_dim_reduce = (num_rows + block_dim_reduce - 1) / block_dim_reduce;
+
+    reduce_rows<<<grid_dim_reduce, block_dim_reduce>>>(y_partial, y, num_rows, threadsPerRow);
     err = cudaDeviceSynchronize(); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaGetLastError(); cuda_err_check(err, __FILE__, __LINE__);
 

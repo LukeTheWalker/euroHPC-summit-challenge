@@ -55,9 +55,12 @@ void gemv_multi_gpu_tiled_kernel_launcher(const double ** local_A, const double 
         err = cudaMemsetAsync(y_partial_local[i], 0, num_rows_per_device[i] * threadsPerRow * sizeof(double), s[i]); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaMemcpyAsync(x_local[i], x, num_cols * sizeof(double), cudaMemcpyDeviceToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);
 
+        size_t block_dim_reduce = 256;
+        size_t grid_dim_reduce = (num_rows_per_device[i] + block_dim_reduce - 1) / block_dim_reduce;
+
         // Launch the kernel
         gemv_tiled_kernel<<<gridDim, blockDim, sharedMemSize, s[i]>>>(local_A[i], x_local[i], y_partial_local[i], num_rows_per_device[i], num_cols);
-        reduce_rows<<<(num_rows_per_device[i] + threadsPerRow - 1) / threadsPerRow, threadsPerRow, 0, s[i]>>>(y_partial_local[i], y_local[i], num_rows_per_device[i], threadsPerRow);
+        reduce_rows<<<grid_dim_reduce, block_dim_reduce, 0, s[i]>>>(y_partial_local[i], y_local[i], num_rows_per_device[i], threadsPerRow);
     
         err = cudaMemcpyAsync(y + i * (num_rows_per_device[i]), y_local[i], num_rows_per_device[i] * sizeof(double), cudaMemcpyDeviceToDevice, s[i]); cuda_err_check(err, __FILE__, __LINE__);
     }

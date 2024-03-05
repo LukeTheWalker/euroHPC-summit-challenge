@@ -39,9 +39,12 @@ void gemv_multi_gpu_nccl_tiled_kernel_launcher(const double ** local_A, const do
         ncclBroadcast(x, x_local[i], num_cols, ncclDouble, 0, comms[i], s[i]);
         nccl_err = ncclGroupEnd(); nccl_err_check(nccl_err, __FILE__, __LINE__);
 
+        size_t block_dim_reduce = 256;
+        size_t grid_dim_reduce = (num_rows_per_device[i] + block_dim_reduce - 1) / block_dim_reduce;
+
         // Launch the kernel
         gemv_tiled_kernel<<<gridDim, blockDim, sharedMemSize, s[i]>>>(local_A[i], x_local[i], y_partial_local[i], num_rows_per_device[i], num_cols);
-        reduce_rows<<<(num_rows_per_device[i] + threadsPerRow - 1) / threadsPerRow, threadsPerRow, 0, s[i]>>>(y_partial_local[i], y_local[i], num_rows_per_device[i], threadsPerRow);
+        reduce_rows<<<grid_dim_reduce, block_dim_reduce, 0, s[i]>>>(y_partial_local[i], y_local[i], num_rows_per_device[i], threadsPerRow);
     }
 
     nccl_err = ncclGroupStart(); nccl_err_check(nccl_err, __FILE__, __LINE__);
@@ -143,8 +146,12 @@ void par_conjugate_gradients_multi_gpu_nccl(const double * h_A, const double * h
         sharedMemSize = autotune_gemv_tiled_multi_gpu(d_local_A_transposed, d_Ap, y_partial_local, y_local, x_local,  number_of_rows_per_device, size, s, gemv_multi_gpu_tiled_kernel_launcher);
     }
 
-    mpi_err_check(MPI_Bcast(&sharedMemSize, 1, MPI_UNSIGNED_LONG, 0, MPI_COMM_WORLD), __FILE__, __LINE__);
-    
+    int mpi_err;
+
+    mpi_err = (MPI_Bcast(&sharedMemSize, 1, MPI_UNSIGNED_LONG, 0, MPI_COMM_WORLD)); mpi_err_check(mpi_err, __FILE__, __LINE__);
+
+    fprintf(stderr, "Rank %d, sharedMemSize: %ld\n", myRank, sharedMemSize);
+
     threadsPerRow = ((size * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
 
     for (int i = 0; i < number_of_devices; i++)
@@ -159,7 +166,7 @@ void par_conjugate_gradients_multi_gpu_nccl(const double * h_A, const double * h
         bb = dot_kernel_launcher(d_b, d_b, size);
         rr = bb;
     }
-    bool done = false; int mpi_err;
+    bool done = false;
     for(num_iters = 1; num_iters <= max_iters; num_iters++)
     {
         mpi_err = MPI_Bcast(&done, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD); mpi_err_check(mpi_err, __FILE__, __LINE__);
