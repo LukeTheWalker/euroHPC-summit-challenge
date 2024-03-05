@@ -21,69 +21,6 @@ void check_cuda(const std::string& msg) {
     }
 }
 
-double dot(const double * x, const double * y, size_t size)
-{
-    double result = 0.0;
-    for(size_t i = 0; i < size; i++)
-    {
-        result += x[i] * y[i];
-    }
-    return result;
-}
-
-
-
-void axpby(double alpha, const double * x, double beta, double * y, size_t size)
-{
-    // y = alpha * x + beta * y
-
-    for(size_t i = 0; i < size; i++)
-    {
-        y[i] = alpha * x[i] + beta * y[i];
-    }
-}
-
-
-
-void gemv(double alpha, const double * A, const double * x, double beta, double * y, size_t num_rows, size_t num_cols)
-{
-    // y = alpha * A * x + beta * y;
-
-    for(size_t r = 0; r < num_rows; r++)
-    {
-        double y_val = 0.0;
-        for(size_t c = 0; c < num_cols; c++)
-        {
-            y_val += alpha * A[r * num_cols + c] * x[c];
-        }
-        y[r] = beta * y[r] + y_val;
-    }
-}
-
-void generate_matrix(size_t n, double** matrix_out) {
-    auto* matrix = new double[n * n];
-    for(size_t i = 0; i < n * n; i++) {
-        matrix[i] = 0.0;
-    }
-    for(size_t i = 0; i < n; i++) {
-        matrix[i*n + i] = 2.0;
-        if(i != n-1) {
-            matrix[(i+1)*n + i] = -1;
-            matrix[i*n + (i+1)] = -1;
-        }
-    }
-    *matrix_out = matrix;
-}
-
-void generate_rhs(size_t n, double value, double** rhs_out) {
-    auto* rhs = new double[n];
-    for(size_t i = 0; i < n; i++) {
-        rhs[i] = value;
-    }
-    *rhs_out = rhs;
-}
-
-
 
 template<int blockSize>
 __device__ void warpReduce(volatile double* sdata, int tid) {

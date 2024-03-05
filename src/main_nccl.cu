@@ -138,7 +138,8 @@ int main(int argc, char ** argv)
         return 6;
     }
 
-    FILE * time_f = fopen("output/time.txt", "w");
+    printf("Writing time to file %s ...\n", argv[7]);
+    FILE * time_f = fopen(("output/" + std::string(argv[7])).c_str(), "w");
     fprintf(time_f, "%d", exec_time);
     fclose(time_f);
    

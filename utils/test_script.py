@@ -54,7 +54,7 @@ def compile(version):
 
 def run(version, matrix_file, vector_file, output_file, tolerance, max_iterations):
     # make run with arguments
-    run_command = ['./bin/conj', matrix_file, vector_file, output_file, tolerance, max_iterations, str(implementation_numbers[version])]
+    run_command = ['./bin/conj', matrix_file, vector_file, output_file, tolerance, max_iterations, str(implementation_numbers[version]), f'time_{version}.txt']
     if version == 'NCCL':
         run_command = ['srun'] + run_command
     
@@ -132,7 +132,7 @@ if __name__ == '__main__':
                 compile(implementation)
                 run(implementation, matrix, rhs, output, args.tolerance, args.max_iterations)
                 check_results(output, args.reference_file, implementation)
-                time = calculate_speedup("output/time.txt", reference_time)      
+                time = calculate_speedup(f'output/time_{implementation}.txt', reference_time)
                 if df.empty:
                     df = pd.DataFrame([[implementation, size, time]], columns=['implementation', 'matrix_size', 'time'])
                 else :
@@ -141,6 +141,6 @@ if __name__ == '__main__':
             compile(args.implementation)
             run(args.implementation, matrix, rhs, output, args.tolerance, args.max_iterations)
             check_results(output, args.reference_file, args.implementation)
-            calculate_speedup("output/time.txt", reference_time)
+            calculate_speedup(f'output/time_{args.implementation}.txt', reference_time)
     
-    df.to_csv('output/times.csv', index=False)
+    df.to_csv(f'output/times_{args.implementation}.csv', index=False)
