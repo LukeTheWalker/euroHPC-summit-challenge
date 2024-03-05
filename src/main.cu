@@ -91,7 +91,7 @@ int main(int argc, char ** argv)
         size = matrix_rows;
     }
 
-    int exec_time;
+    size_t exec_time;
     double sol[size];
     std::function<void(double*, double*, double*, size_t, int, double)> implementations_to_test[255]; 
         
@@ -121,11 +121,11 @@ int main(int argc, char ** argv)
         
         exec_time = 0;
         printf("Solving the system with %s ...\n", names[impl_used].c_str());
-        double start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        size_t start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         implementations_to_test[impl_used](matrix, rhs, sol, size, max_iters, rel_error);
-        double end_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        size_t end_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         exec_time = (end_time - start_time);
-        printf("Done in %f milliseconds\n", exec_time);
+        printf("Done in %lu milliseconds\n", exec_time);
     }
 
     
@@ -138,7 +138,7 @@ int main(int argc, char ** argv)
     }
 
     FILE * time_f = fopen("output/time.txt", "w");
-    fprintf(time_f, "%d", exec_time);
+    fprintf(time_f, "%lu", exec_time);
     fclose(time_f);
 
     #if USE_CUDA == 1

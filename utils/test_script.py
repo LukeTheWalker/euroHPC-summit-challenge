@@ -19,12 +19,15 @@ implementation_numbers = {
 
 matrix_size = [
     100,
-    500, 
+    500,
     1000,
     5000,
     10000,
+    20000,
+    40000,
     50000,
-    70000,
+    60000,
+    70000
 ]
 
 def compile(version):
