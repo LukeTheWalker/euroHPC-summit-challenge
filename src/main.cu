@@ -121,11 +121,11 @@ int main(int argc, char ** argv)
         
         exec_time = 0;
         printf("Solving the system with %s ...\n", names[impl_used].c_str());
-        double start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        double start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         implementations_to_test[impl_used](matrix, rhs, sol, size, max_iters, rel_error);
-        double end_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        double end_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         exec_time = (end_time - start_time);
-        printf("Done in %f milliseconds\n", exec_time / 1000.0);
+        printf("Done in %f milliseconds\n", exec_time);
     }
 
     
