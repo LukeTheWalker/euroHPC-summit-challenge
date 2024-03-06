@@ -110,19 +110,19 @@ int main(int argc, char ** argv)
         int rank;
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-        long start_time = 0, end_time = 0;
+        size_t start_time = 0, end_time = 0;
 
         MPI_Barrier(MPI_COMM_WORLD);
         if (rank == 0){
             exec_time = 0;
             printf("Solving the system with %s ...\n", names[impl_used].c_str());
-            start_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+            start_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         }
         implementations_to_test[impl_used](matrix, rhs, sol, size, max_iters, rel_error);
         if (rank == 0){
-            end_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+            end_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
             exec_time = (end_time - start_time);
-            printf("Done in %f milliseconds\n", exec_time / 1000.0);
+            printf("Done in %f milliseconds\n", exec_time);
         }
 
         MPI_Finalize();
@@ -140,7 +140,7 @@ int main(int argc, char ** argv)
 
     printf("Writing time to file %s ...\n", argv[7]);
     FILE * time_f = fopen(("output/" + std::string(argv[7])).c_str(), "w");
-    fprintf(time_f, "%d", exec_time);
+    fprintf(time_f, "%lu", exec_time);
     fclose(time_f);
    
     cudaError_t err;
