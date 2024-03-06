@@ -275,8 +275,8 @@ void par_conjugate_gradients(const double * h_A, const double * h_b, double * h_
 
     double * y_partial = NULL;
 
-    // size_t sharedMemSize = SHMEM;
-    size_t sharedMemSize = autotune_gemv_tiled(d_A, d_Ap, size, size, gemv_tiled_kernel_launcher);
+    size_t sharedMemSize = SHMEM;
+    // size_t sharedMemSize = autotune_gemv_tiled(d_A, d_Ap, size, size, gemv_tiled_kernel_launcher);
     size_t threadsPerRow = ((size * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
 
     err = cudaMalloc((void**)&y_partial, size * threadsPerRow * sizeof(double)); cuda_err_check(err, __FILE__, __LINE__);

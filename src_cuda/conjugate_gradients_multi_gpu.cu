@@ -204,7 +204,8 @@ void par_conjugate_gradients_multi_gpu(const double * h_A, const double * h_b, d
     err = cudaMemcpy(d_r, d_b, size * sizeof(double), cudaMemcpyDeviceToDevice); cuda_err_check(err, __FILE__, __LINE__);
     err = cudaMemcpy(d_p, d_b, size * sizeof(double), cudaMemcpyDeviceToDevice); cuda_err_check(err, __FILE__, __LINE__);
 
-    size_t sharedMemSize = autotune_gemv_tiled_multi_gpu(d_local_A_transposed, d_Ap, y_partial_local, y_local, x_local,  number_of_rows_per_device, size, s, gemv_multi_gpu_tiled_kernel_launcher);
+    size_t sharedMemSize = SHMEM;
+    // size_t sharedMemSize = autotune_gemv_tiled_multi_gpu(d_local_A_transposed, d_Ap, y_partial_local, y_local, x_local,  number_of_rows_per_device, size, s, gemv_multi_gpu_tiled_kernel_launcher);
     size_t threadsPerRow = ((size * sizeof(double)) + sharedMemSize - 1) / sharedMemSize;
 
     for (int i = 0; i < number_of_devices; i++)

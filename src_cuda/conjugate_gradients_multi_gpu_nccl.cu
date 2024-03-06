@@ -143,7 +143,8 @@ void par_conjugate_gradients_multi_gpu_nccl(const double * h_A, const double * h
         err = cudaMemcpy(d_r, d_b, size * sizeof(double), cudaMemcpyDeviceToDevice); cuda_err_check(err, __FILE__, __LINE__);
         err = cudaMemcpy(d_p, d_b, size * sizeof(double), cudaMemcpyDeviceToDevice); cuda_err_check(err, __FILE__, __LINE__);
     
-        sharedMemSize = autotune_gemv_tiled_multi_gpu(d_local_A_transposed, d_Ap, y_partial_local, y_local, x_local,  number_of_rows_per_device, size, s, gemv_multi_gpu_tiled_kernel_launcher);
+        sharedMemSize = SHMEM;
+        // sharedMemSize = autotune_gemv_tiled_multi_gpu(d_local_A_transposed, d_Ap, y_partial_local, y_local, x_local,  number_of_rows_per_device, size, s, gemv_multi_gpu_tiled_kernel_launcher);
     }
 
     int mpi_err;
