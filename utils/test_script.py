@@ -142,7 +142,7 @@ if __name__ == '__main__':
             compile(args.implementation)
             run(args.implementation, matrix, rhs, output, args.tolerance, args.max_iterations)
             check_results(output, args.reference_file, args.implementation)
-            calculate_speedup(f'output/time_{args.implementation}.txt', reference_time)
+            time = calculate_speedup(f'output/time_{args.implementation}.txt', reference_time)
             if df.empty:
                 df = pd.DataFrame([[args.implementation, size, time]], columns=['implementation', 'matrix_size', 'time'])
             else:
