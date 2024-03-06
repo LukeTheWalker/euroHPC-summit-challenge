@@ -24,6 +24,7 @@ matrix_size = [
     5000,
     10000,
     20000,
+    30000,
     40000,
     50000,
     60000,
@@ -142,5 +143,9 @@ if __name__ == '__main__':
             run(args.implementation, matrix, rhs, output, args.tolerance, args.max_iterations)
             check_results(output, args.reference_file, args.implementation)
             calculate_speedup(f'output/time_{args.implementation}.txt', reference_time)
+            if df.empty:
+                df = pd.DataFrame([[args.implementation, size, time]], columns=['implementation', 'matrix_size', 'time'])
+            else:
+                df = pd.concat([df, pd.DataFrame([[args.implementation, size, time]], columns=['implementation', 'matrix_size', 'time'])])
     
     df.to_csv(f'output/times_{args.implementation}.csv', index=False)
