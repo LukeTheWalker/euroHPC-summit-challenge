@@ -188,6 +188,10 @@ if __name__ == '__main__':
         matrix = f'{args.data_folder}/matrix{size}.bin'
         rhs = f'{args.data_folder}/rhs{size}.bin'
         output = f'output/output_{size}.bin'
+        # make them absolute paths
+        matrix = os.path.abspath(matrix)
+        rhs = os.path.abspath(rhs)
+        output = os.path.abspath(output)
         # if one of them does not exist, skip
         if not os.path.exists(matrix) or not os.path.exists(rhs):
             continue
