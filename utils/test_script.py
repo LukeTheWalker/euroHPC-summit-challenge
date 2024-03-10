@@ -112,6 +112,7 @@ def run(version, matrix_file, vector_file, output_file, tolerance, max_iteration
             run_command = ['./main', max_iterations, tolerance, "0", "1", str(threads_number), matrix_file, vector_file, output_file]
         elif version == 'MPI':
             run_command = ['srun', './mpi', matrix_file, vector_file, output_file, max_iterations, tolerance, str(threads_number)]
+        print(' '.join(run_command))
         subprocess.run(run_command, check=True)
         # change directory back to the parent directory
         os.chdir('../..')
