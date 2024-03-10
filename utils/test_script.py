@@ -13,7 +13,7 @@ implementation_numbers = {
     'CUBLAS': 1,
     'TILED': 2,
     'ROWS': 3,
-    'OPENMP': 4,
+    # 'OPENMP': 4,
     'SERIAL': 5
 }
 
@@ -31,35 +31,100 @@ matrix_size = [
     70000
 ]
 
-def compile(version):
-    flags = []
-    if version != 'NCCL':
-        flags += ['USE_NCCL=0']
-    if version == 'OPENMP' or version == 'SERIAL':
-        flags += ['USE_CUDA=0']
-    else:
-        flags += ['USE_CUDA=1']
+tommy_implementations = [
+    'FPGA',
+    'MFPGA',
+    'MNFPGA'
+    'OPENMP',
+    'MPI'
+]
 
+executable_names = {
+    'FPGA': 'single_fpga',
+    'MFPGA': 'multi_fpga',
+    'MNFPGA': 'multi_node',
+    'OPENMP': 'main',
+    'MPI': 'mpi'
+}
+
+threads_number = 200;
+
+
+def compile(version):
     print(f'----------------- Using {version} -----------------')
 
-    # make clean
-    clean_command = ['make', 'clean']
-    with open(os.devnull, 'w') as devnull:
-        subprocess.run(clean_command, check=True, stdout=devnull)
+    if version in tommy_implementations:
+        load_command = ['module', 'load', '520nmx', 'CMake', 'intel', 'deploy/EasyBuild']
+        with open(os.devnull, 'w') as devnull:
+            subprocess.run(load_command, check=True, stdout=devnull)
+        #change directory to the FPGA directory
+        os.chdir('fpga')
+        # make build directory if it doesn't exist
+        if not os.path.exists('build'):
+            os.makedirs('build')
+        # change directory to the build directory
+        os.chdir('build')
+        # run cmake
+        cmake_command = ['cmake', '..']
+        with open(os.devnull, 'w') as devnull:
+            subprocess.run(cmake_command, check=True, stdout=devnull)
+        # run make
+        make_command = ['make']
+        with open(os.devnull, 'w') as devnull:
+            subprocess.run(make_command, check=True, stdout=devnull)
+        # change directory back to the parent directory
+        os.chdir('..')
 
-    # make with flags
-    make_command = ['make', '-j4'] + flags
-    # print the command being run
-    with open(os.devnull, 'w') as devnull:
-        subprocess.run(make_command, check=True, stdout=devnull)
+    else:
+        flags = []
+        if version != 'NCCL':
+            flags += ['USE_NCCL=0']
+        if version == 'OPENMP' or version == 'SERIAL':
+            flags += ['USE_CUDA=0']
+        else:
+            flags += ['USE_CUDA=1']
+
+        # make clean
+        clean_command = ['make', 'clean']
+        with open(os.devnull, 'w') as devnull:
+            subprocess.run(clean_command, check=True, stdout=devnull)
+
+        # make with flags
+        make_command = ['make', '-j4'] + flags
+        # print the command being run
+
+        with open(os.devnull, 'w') as devnull:
+            subprocess.run(make_command, check=True, stdout=devnull)
 
 def run(version, matrix_file, vector_file, output_file, tolerance, max_iterations):
-    # make run with arguments
-    run_command = ['./bin/conj', matrix_file, vector_file, output_file, tolerance, max_iterations, str(implementation_numbers[version]), f'time_{version}.txt']
-    if version == 'NCCL':
-        run_command = ['srun'] + run_command
-    
-    subprocess.run(run_command, check=True)
+
+    if version in tommy_implementations:
+        # change directory to the FPGA directory
+        os.chdir('fpga')
+        # change directory to the build directory
+        os.chdir('build')
+        # run the executable
+
+        if version ==  'FPGA':
+            run_command = ['./single_fpga', matrix_file, vector_file, max_iterations, tolerance]
+        elif version == 'MFPGA':
+            run_command = ['./multi_fpga', matrix_file, vector_file, max_iterations, tolerance, "2"]
+        elif version == 'MNFPGA':
+            run_command = ['srun', './multi_node', matrix_file, vector_file, output_file, max_iterations, tolerance, str(threads_number)]
+        elif version == 'OPENMP':
+            run_command = ['./main', max_iterations, tolerance, "0", "1", str(threads_number), matrix_file, vector_file, output_file]
+        elif version == 'MPI':
+            run_command = ['srun', './mpi', matrix_file, vector_file, output_file, max_iterations, tolerance, str(threads_number)]
+        subprocess.run(run_command, check=True)
+        # change directory back to the parent directory
+        os.chdir('..')
+    else:
+        # make run with arguments
+        run_command = ['./bin/conj', matrix_file, vector_file, output_file, max_iterations, tolerance, str(implementation_numbers[version]), f'time_{version}.txt']
+        if version == 'NCCL':
+            run_command = ['srun'] + run_command
+        
+        subprocess.run(run_command, check=True)
 
 def check_results(output_file, reference_file, implementation):
     if reference_file is None:
@@ -92,6 +157,10 @@ def check_results(output_file, reference_file, implementation):
 
 def calculate_speedup(time_file, reference_time):
     # read the time file
+    if not os.path.exists(time_file):
+        print('No time file found')
+        return -1
+
     with open(time_file, 'r') as file:
         time = float(file.read())
 
@@ -111,7 +180,7 @@ if __name__ == '__main__':
     parser.add_argument('tolerance', help='The tolerance for the solution')
     parser.add_argument('max_iterations', help='The maximum number of iterations to perform')
     parser.add_argument('reference_file', nargs='?', default=None, help='The reference file to compare the output to')
-    parser.add_argument('implementation', choices=['NCCL', 'MGPU', 'CUBLAS', 'TILED', 'ROWS', 'OPENMP', 'SERIAL', 'ALL', 'ALL_GPU', 'ALL_CPU'], help='The version of the program to run')
+    parser.add_argument('implementation', choices=['NCCL', 'MGPU', 'CUBLAS', 'TILED', 'ROWS', 'OPENMP', 'MPI', 'SERIAL', 'FPGA', 'MFPGA', 'MNFPGA', 'ALL', 'ALL_CPU', 'ALL_FPGA'], help='The version of the program to run')
     
     # Parse the command-line arguments
     args = parser.parse_args()
@@ -122,11 +191,16 @@ if __name__ == '__main__':
         matrix = f'{args.data_folder}/matrix{size}.bin'
         rhs = f'{args.data_folder}/rhs{size}.bin'
         output = f'output/output_{size}.bin'
+        # if one of them does not exist, skip
+        if not os.path.exists(matrix) or not os.path.exists(rhs):
+            continue
         if 'ALL' in args.implementation:
             if 'GPU' in args.implementation:
                 implementations = ['CUBLAS', 'TILED', 'ROWS', 'MGPU', 'NCCL']
             elif 'CPU' in args.implementation:
-                implementations = ['SERIAL', 'OPENMP']
+                implementations = ['SERIAL', 'OPENMP', 'MPI']
+            elif 'FPGA' in args.implementation:
+                implementations = ['FPGA', 'MFPGA', 'MNFPGA']
             else:
                 implementations = implementation_numbers.keys()
             for implementation in implementations:
