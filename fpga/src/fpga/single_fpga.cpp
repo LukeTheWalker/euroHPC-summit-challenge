@@ -1,6 +1,3 @@
-//
-// Created by tomma on 05/03/2024.
-//
 
 
 
@@ -8,6 +5,26 @@
 #include <chrono>
 #include <cmath>
 #define MEM_ALIGNMENT 64
+
+
+bool write_matrix_to_file(const char * filename, const double * matrix, size_t num_rows, size_t num_cols)
+{
+    FILE * file = fopen(filename, "wb");
+    if(file == nullptr)
+    {
+        fprintf(stderr, "Cannot open output file\n");
+        return false;
+    }
+
+    fwrite(&num_rows, sizeof(size_t), 1, file);
+    fwrite(&num_cols, sizeof(size_t), 1, file);
+    fwrite(matrix, sizeof(double), num_rows * num_cols, file);
+
+    fclose(file);
+
+    return true;
+}
+
 
 bool read_matrix_from_file(const char * filename, double ** matrix_out, size_t * num_rows_out, size_t * num_cols_out)
 {
@@ -24,7 +41,7 @@ bool read_matrix_from_file(const char * filename, double ** matrix_out, size_t *
 
     fread(&num_rows, sizeof(size_t), 1, file);
     fread(&num_cols, sizeof(size_t), 1, file);
-    matrix = new double[num_rows * num_cols];
+    matrix = new (std::align_val_t(MEM_ALIGNMENT))double[num_rows * num_cols];
     fread(matrix, sizeof(double), num_rows * num_cols, file);
 
     *matrix_out = matrix;
@@ -64,7 +81,6 @@ cl_int init_cl(cl_uint device_numbers, cl_command_queue** queues, cl_context* co
         std::cout << name << std::endl;
     }*/
 
-    std::cout << "found platform " << num_plat_found << std::endl;
 
     *mydev = (cl_device_id*)malloc(device_numbers * sizeof(cl_device_id));
 
@@ -119,7 +135,6 @@ void generate_rhs(size_t n, double value, double** rhs_out) {
 
 void conjugate_gradient(const double* matrix, const double* rhs, double* x, int size, double tol, int max_iters, cl_context context, cl_command_queue queue, cl_kernel kernel) {
 
-    std::cout << "starting conjugate gradient" << std::endl;
     cl_mem device_matrix;
     cl_mem device_rhs;
     cl_mem sol;
@@ -240,8 +255,12 @@ void conjugate_gradients(const double * A, const double * b, double * x, size_t 
 
 
 int main(int argc, char** argv) {
-    int max_iters = atoi(argv[3]);
-    double tol = atof(argv[4]);
+    if(argc != 6) {
+        std::cout << "wrong number of parameters" << std::endl;
+        return 0;
+    }
+    int max_iters = atoi(argv[4]);
+    double tol = atof(argv[5]);
     cl_context context;
     cl_command_queue* command_queues;
     cl_program program;
@@ -272,14 +291,12 @@ int main(int argc, char** argv) {
     conjugate_gradient(matrix, rhs, sol, size, tol, max_iters, context, command_queues[0], kernel);
     auto stop_fpga = std::chrono::high_resolution_clock::now();
 
-    auto start = std::chrono::high_resolution_clock::now();
-    conjugate_gradients(matrix, rhs, sol, size, max_iters, tol);
-    auto stop = std::chrono::high_resolution_clock::now();
+
 
     long execution_time_fpga = std::chrono::duration_cast<std::chrono::microseconds>(stop_fpga - start_fpga).count();
-    long execution_time_cpu = std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count();
-    std::cout << "fpga: " << execution_time_fpga << std::endl;
-    std::cout << "cpu: " << execution_time_cpu << std::endl;
+    std::cout << "execution time (us): " << execution_time_fpga << std::endl;
+
+    write_matrix_to_file(argv[3], sol, size, 1);
 
 
 

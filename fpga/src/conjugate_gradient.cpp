@@ -5,6 +5,25 @@
 #include <iostream>
 
 
+bool write_matrix_to_file(const char * filename, const double * matrix, size_t num_rows, size_t num_cols)
+{
+    FILE * file = fopen(filename, "wb");
+    if(file == nullptr)
+    {
+        fprintf(stderr, "Cannot open output file\n");
+        return false;
+    }
+
+    fwrite(&num_rows, sizeof(size_t), 1, file);
+    fwrite(&num_cols, sizeof(size_t), 1, file);
+    fwrite(matrix, sizeof(double), num_rows * num_cols, file);
+
+    fclose(file);
+
+    return true;
+}
+
+
 bool read_matrix_from_file(const char * filename, double ** matrix_out, size_t * num_rows_out, size_t * num_cols_out, int num_threads)
 {
     double * matrix;
@@ -262,30 +281,37 @@ void conjugate_gradients(const double * A, const double * b, double * x, size_t 
 
 int main(int argc, char ** argv)
 {
-    //printf("Usage: size max_iters rel_error\n");
-    printf("\n");
-
+    if(argc != 9) {
+        std::cout << "wrong number of parameters" << std::endl;
+        return 0;
+    }
     size_t size = 5000;
     int max_iters = 3000;
     double rel_error = 1e-12;
     int serial_trials = 0;
     int parallel_trials = 1;
-    int blank_trials = 0;
     int threads_number = 6;
 
 
-    if(argc > 1) size = atoi(argv[1]);
-    if(argc > 2) max_iters = atoi(argv[2]);
-    if(argc > 3) rel_error = atof(argv[3]);
-    if(argc > 4) serial_trials = atoi(argv[4]);
-    if(argc > 5) parallel_trials = atoi(argv[5]);
-    if(argc > 6) threads_number = atoi(argv[6]);
-
+    //if(argc > 1) size = atoi(argv[1]);
+    if(argc > 1) max_iters = atoi(argv[1]);
+    if(argc > 2) rel_error = atof(argv[2]);
+    if(argc > 3) serial_trials = atoi(argv[3]);
+    if(argc > 4) parallel_trials = atoi(argv[4]);
+    if(argc > 5) threads_number = atoi(argv[5]);
+    max_iters = 1;
     double* matrix;
     double* rhs;
     size_t ignore;
-    read_matrix_from_file(argv[7], &matrix, &size, &size, threads_number);
-    read_matrix_from_file(argv[8], &rhs, &ignore, &ignore, threads_number);
+
+
+
+    read_matrix_from_file(argv[6], &matrix, &size, &size, threads_number);
+    read_matrix_from_file(argv[7], &rhs, &ignore, &ignore, threads_number);
+
+    //generate_matrix(size, &matrix, threads_number);
+    //generate_rhs(size, 1, &rhs, threads_number);
+
 
     printf("Command line arguments:\n");
     printf("  matrix_size: %d\n", size);
@@ -318,6 +344,7 @@ int main(int argc, char ** argv)
     std::cout << "Serial average execution time: " << (double)serial_execution_time/serial_trials << std::endl;
     std::cout << "Parallel average execution time: " << (double)parallel_execution_time/parallel_trials << std::endl;
     std::cout << "Speedup: " << (double)((double)serial_execution_time/serial_trials)/((double)parallel_execution_time/parallel_trials) << std::endl;
+    write_matrix_to_file(argv[8], sol, size, 1);
     printf("Finished successfully\n");
 
     return 0;

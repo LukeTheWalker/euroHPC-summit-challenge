@@ -1,4 +1,3 @@
-
 #define UNROLL 4
 #define LATENCY 80
 //#define SIZE 10000

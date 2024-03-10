@@ -1,6 +1,4 @@
-//
-// Created by tomma on 04/03/2024.
-//
+
 
 #ifndef MATRIX_VECTOR_MULTIPLICATION_FPGAMATRIXVECTORMULTIPLIER_H
 #define MATRIX_VECTOR_MULTIPLICATION_FPGAMATRIXVECTORMULTIPLIER_H
@@ -103,15 +101,16 @@ void FPGAMatrixVectorMultiplier::setup() {
     for(int i = 0; i < num_device; i++) {
         err = 0;
         device_A[i] = allocateDeviceReadOnly(&err, local_partial_size[i] * size, context);
+
         linkBufferToDevice(queues[i], device_A[i]);
         writeToBuffer(queues[i], device_A[i], 0, local_partial_size[i] * size, splitted_matrix[i], 0);
 
         device_p[i] = allocateDevice(&err, size, context);
         linkBufferToDevice(queues[i], device_p[i]);
 
+
         device_Ap[i] = allocateDevice(&err, local_partial_size[i], context);
         linkBufferToDevice(queues[i], device_Ap[i]);
-
     }
 
 }

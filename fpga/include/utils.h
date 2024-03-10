@@ -13,7 +13,7 @@
 #define MAX_DEVICE 10
 #define MATRIX_VECTOR_KERNEL_PATH "../src/fpga/MVP_improved_v1.aocx"
 #define MATRIX_VECTOR_KERNEL_NAME "matrix_vector_kernel"
-
+#define CL_DEVICE_GLOBAL_MEM_SIZE 1024*1024*1024*16
 
 struct MatrixData {
     size_t offset;
