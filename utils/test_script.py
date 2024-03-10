@@ -34,7 +34,7 @@ matrix_size = [
 tommy_implementations = [
     'FPGA',
     'MFPGA',
-    'MNFPGA'
+    'MNFPGA',
     'OPENMP',
     'MPI'
 ]
