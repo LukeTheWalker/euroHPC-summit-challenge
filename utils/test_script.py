@@ -70,7 +70,7 @@ def compile(version):
         with open(os.devnull, 'w') as devnull:
             subprocess.run(make_command, check=True, stdout=devnull)
         # change directory back to the parent directory
-        os.chdir('..')
+        os.chdir('../..')
 
     else:
         flags = []
@@ -114,7 +114,7 @@ def run(version, matrix_file, vector_file, output_file, tolerance, max_iteration
             run_command = ['srun', './mpi', matrix_file, vector_file, output_file, max_iterations, tolerance, str(threads_number)]
         subprocess.run(run_command, check=True)
         # change directory back to the parent directory
-        os.chdir('..')
+        os.chdir('../..')
     else:
         # make run with arguments
         run_command = ['./bin/conj', matrix_file, vector_file, output_file, max_iterations, tolerance, str(implementation_numbers[version]), f'time_{version}.txt']
