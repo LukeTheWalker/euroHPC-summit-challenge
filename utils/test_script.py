@@ -162,8 +162,8 @@ def calculate_speedup(time_file, reference_time):
         return -1
 
     with open(time_file, 'r') as file:
-        time = float(file.read())
-
+        time = int(file.read())
+    time = time if time != 0 else 1
     speedup = reference_time / time
     print('Speedup: ', speedup)
     return time
