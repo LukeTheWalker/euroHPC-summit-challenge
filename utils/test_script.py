@@ -103,9 +103,9 @@ def run(version, matrix_file, vector_file, output_file, tolerance, max_iteration
         # run the executable
 
         if version ==  'FPGA':
-            run_command = ['./single_fpga', matrix_file, vector_file, max_iterations, tolerance]
+            run_command = ['./single_fpga', matrix_file, vector_file, output_file, max_iterations, tolerance]
         elif version == 'MFPGA':
-            run_command = ['./multi_fpga', matrix_file, vector_file, max_iterations, tolerance, "2"]
+            run_command = ['./multi_fpga', matrix_file, vector_file, output_file, max_iterations, tolerance, "2"]
         elif version == 'MNFPGA':
             run_command = ['srun', './multi_node', matrix_file, vector_file, output_file, max_iterations, tolerance, str(threads_number)]
         elif version == 'OPENMP':
