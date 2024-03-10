@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(matrix_vector_multiplication CUDA CXX)
+project(matrix_vector_multiplication CXX)
 
 include_directories(include)
 include_directories(src/heterogeneous)
