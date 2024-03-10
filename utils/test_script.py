@@ -54,9 +54,6 @@ def compile(version):
     print(f'----------------- Using {version} -----------------')
 
     if version in tommy_implementations:
-        load_command = ['module', 'load', '520nmx', 'CMake', 'intel', 'deploy/EasyBuild']
-        with open(os.devnull, 'w') as devnull:
-            subprocess.run(load_command, check=True, stdout=devnull)
         #change directory to the FPGA directory
         os.chdir('fpga')
         # make build directory if it doesn't exist
